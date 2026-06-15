@@ -960,8 +960,8 @@ function pgDash(){
     }
   }
 
-  const recent=[...S.transactions].filter(t=>t.type!=='epargne').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,4);
-  const recentEp=[...S.transactions].filter(t=>t.type==='epargne').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3);
+  const recent=[...S.transactions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,6);
+  const recentEp=[];// plus utilisé dans le bloc épargnes
   const allItems=[...S.depFixes.map(d=>({name:d.name,m:d.amount*MULT})),...S.depVar.map(d=>({name:d.name,m:d.amount}))];
   const periodLabel=f.month?`${['','Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'][parseInt(f.month)]} ${f.year||''}`:f.year?`Année ${f.year}`:'Toutes périodes';
 
@@ -1029,16 +1029,6 @@ function pgDash(){
         </div>`;
       }).join('')}
     </div>
-    ${recentEp.length>0?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bdr)">
-      ${recentEp.map(t=>{const c=S.comptes.find(x=>x.id===t.compteId);return`
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px;border-bottom:1px solid var(--bg)">
-          <div style="display:flex;align-items:center;gap:6px">
-            <div style="width:6px;height:6px;border-radius:50%;background:${c?.color||'#888'}"></div>
-            <span>${c?.name||'—'}</span><span style="color:var(--mut);font-size:11px">${t.date}</span>
-          </div>
-          <span style="font-family:'DM Mono',monospace;font-weight:600;color:var(--pur)">+${fmt(t.montant)}</span>
-        </div>`}).join('')}
-    </div>`:''}
   </div>
 
   ${alerts}
@@ -1055,8 +1045,19 @@ function pgDash(){
     <div class="card">
       <div class="ch"><h2>Transactions récentes</h2><button class="btn bg2 bs" onclick="go('transactions')">Voir tout</button></div>
       ${recent.length===0?'<p style="color:var(--mut);font-size:13px;padding:.5rem 0">Aucune transaction.</p>':
-        `<table><thead><tr><th>Date</th><th>Magasin</th><th>Total</th></tr></thead><tbody>
-        ${recent.map(t=>`<tr><td style="font-size:12px;font-family:'DM Mono',monospace">${t.date}</td><td>${t.store}</td><td style="font-family:'DM Mono',monospace">${fmt(t.tot)}</td></tr>`).join('')}
+        `<table><thead><tr><th>Date</th><th>Description</th><th>Type</th><th>Montant</th></tr></thead><tbody>
+        ${recent.map(t=>{
+          const isEp=t.type==='epargne';
+          const c=isEp?S.comptes.find(x=>x.id===t.compteId):null;
+          const label=isEp?(c?.name||'Épargne'):t.store;
+          const badge=isEp?`<span class="badge bg-p">Épargne</span>`:`<span class="badge bg-gr">Dépense</span>`;
+          const color=isEp?'var(--pur)':'var(--txt)';
+          return`<tr>
+            <td style="font-size:12px;font-family:'DM Mono',monospace">${t.date}</td>
+            <td style="font-size:13px">${label}</td>
+            <td>${badge}</td>
+            <td style="font-family:'DM Mono',monospace;font-weight:600;color:${color}">${isEp?'+':''}${fmt(t.tot)}</td>
+          </tr>`;}).join('')}
         </tbody></table>`}
       <button class="add" onclick="openTxn()">+ Nouvelle transaction</button>
     </div>
