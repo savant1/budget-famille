@@ -617,12 +617,12 @@ async function loadFromSupabase(foyerId){
   S.settings.tps=f.tps||0.05;
   S.settings.tvq=f.tvq||0.09975;
 
-  S.revenus=revenus.map(r=>({id:r.id,name:r.name,amount:+r.amount,freq:r.freq,week:r.week,jour:r.jour||20}));
-  S.depFixes=depFixes.map(d=>({id:d.id,name:d.name,amount:+d.amount,week:d.week}));
-  S.depVar=depVar.map(d=>({id:d.id,name:d.name,amount:+d.amount,cat:d.cat}));
-  S.depPonct=depPonct.map(d=>({id:d.id,name:d.name,amount:+d.amount,cat:d.cat,mois:d.mois||[]}));
-  S.paiesReelles=paiesReelles.map(p=>({id:p.id,revId:p.rev_id,date:p.date,montant:+p.montant,note:p.note||''}));
-  S.comptes=comptes.map(c=>({id:c.id,name:c.name,type:c.type,color:c.color,solde:+c.solde,objectif:+c.objectif}));
+  S.revenus=revenus.map(r=>({id:r.id,name:r.name,amount:+r.amount,freq:r.freq,week:r.week,jour:r.jour||20,_persisted:true}));
+  S.depFixes=depFixes.map(d=>({id:d.id,name:d.name,amount:+d.amount,week:d.week,_persisted:true}));
+  S.depVar=depVar.map(d=>({id:d.id,name:d.name,amount:+d.amount,cat:d.cat,_persisted:true}));
+  S.depPonct=depPonct.map(d=>({id:d.id,name:d.name,amount:+d.amount,cat:d.cat,mois:d.mois||[],_persisted:true}));
+  S.paiesReelles=paiesReelles.map(p=>({id:p.id,revId:p.rev_id,date:p.date,montant:+p.montant,note:p.note||'',_persisted:true}));
+  S.comptes=comptes.map(c=>({id:c.id,name:c.name,type:c.type,color:c.color,solde:+c.solde,objectif:+c.objectif,_persisted:true}));
 
   // Transactions avec leurs items
   const itemsMap={};
@@ -646,7 +646,7 @@ async function loadFromSupabase(foyerId){
   S.projets=projets.map(p=>({
     id:p.id,name:p.name,cat:p.cat,budget:+p.budget,status:p.status,
     start:p.start_date,end:p.end_date,notes:p.notes||'',
-    deps:depsMap[p.id]||[]
+    deps:depsMap[p.id]||[],_persisted:true
   }));
 
   if(cats.length>0){
@@ -688,32 +688,37 @@ function save(){
 
 // Sauvegarde d'un revenu (upsert)
 async function saveRevenu(r){
-  if(r.id>1000000){// nouveau (id temporaire)
-    const res=await sbPost('revenus',{foyer_id:FOYER_ID,name:r.name,amount:r.amount,freq:r.freq,week:r.week,jour:r.jour||20,sort_order:S.revenus.indexOf(r)});
-    r.id=res[0].id;
-  } else {
-    await sbPatch('revenus',`?id=eq.${r.id}`,{name:r.name,amount:r.amount,freq:r.freq,week:r.week,jour:r.jour||20});
-  }
+  const payload={foyer_id:FOYER_ID,name:r.name,amount:r.amount,freq:r.freq,week:r.week,jour:r.jour||20,sort_order:S.revenus.indexOf(r)};
+  if(!r._persisted){const res=await sbPost('revenus',payload);r.id=res[0].id;r._persisted=true;}
+  else await sbPatch('revenus',`?id=eq.${r.id}&foyer_id=eq.${FOYER_ID}`,payload);
 }
 async function saveDepFix(d){
-  if(d.id>1000000){const res=await sbPost('dep_fixes',{foyer_id:FOYER_ID,name:d.name,amount:d.amount,week:d.week});d.id=res[0].id;}
-  else await sbPatch('dep_fixes',`?id=eq.${d.id}`,{name:d.name,amount:d.amount,week:d.week});
+  const payload={foyer_id:FOYER_ID,name:d.name,amount:d.amount,week:d.week};
+  if(!d._persisted){const res=await sbPost('dep_fixes',payload);d.id=res[0].id;d._persisted=true;}
+  else await sbPatch('dep_fixes',`?id=eq.${d.id}&foyer_id=eq.${FOYER_ID}`,payload);
 }
 async function saveDepVar(d){
-  if(d.id>1000000){const res=await sbPost('dep_var',{foyer_id:FOYER_ID,name:d.name,amount:d.amount,cat:d.cat});d.id=res[0].id;}
-  else await sbPatch('dep_var',`?id=eq.${d.id}`,{name:d.name,amount:d.amount,cat:d.cat});
+  const payload={foyer_id:FOYER_ID,name:d.name,amount:d.amount,cat:d.cat};
+  if(!d._persisted){const res=await sbPost('dep_var',payload);d.id=res[0].id;d._persisted=true;}
+  else await sbPatch('dep_var',`?id=eq.${d.id}&foyer_id=eq.${FOYER_ID}`,payload);
 }
 async function saveDepPonct(d){
-  if(d.id>1000000){const res=await sbPost('dep_ponct',{foyer_id:FOYER_ID,name:d.name,amount:d.amount,cat:d.cat,mois:d.mois});d.id=res[0].id;}
-  else await sbPatch('dep_ponct',`?id=eq.${d.id}`,{name:d.name,amount:d.amount,cat:d.cat,mois:d.mois});
+  const payload={foyer_id:FOYER_ID,name:d.name,amount:d.amount,cat:d.cat,mois:d.mois};
+  if(!d._persisted){const res=await sbPost('dep_ponct',payload);d.id=res[0].id;d._persisted=true;}
+  else await sbPatch('dep_ponct',`?id=eq.${d.id}&foyer_id=eq.${FOYER_ID}`,payload);
 }
 async function savePaieReelle(p){
   const res=await sbPost('paies_reelles',{foyer_id:FOYER_ID,rev_id:p.revId,date:p.date,montant:p.montant,note:p.note||''});
   p.id=res[0].id;
 }
 async function saveCompte(c){
-  if(c.id>1000000){const res=await sbPost('comptes',{foyer_id:FOYER_ID,name:c.name,type:c.type,color:c.color,solde:c.solde,objectif:c.objectif});c.id=res[0].id;}
-  else await sbPatch('comptes',`?id=eq.${c.id}`,{name:c.name,type:c.type,color:c.color,solde:c.solde,objectif:c.objectif});
+  const payload={foyer_id:FOYER_ID,name:c.name,type:c.type,color:c.color,solde:c.solde,objectif:c.objectif};
+  if(!c._persisted){
+    const res=await sbPost('comptes',payload);
+    c.id=res[0].id;c._persisted=true;
+  } else {
+    await sbPatch('comptes',`?id=eq.${c.id}&foyer_id=eq.${FOYER_ID}`,{name:c.name,type:c.type,color:c.color,solde:c.solde,objectif:c.objectif});
+  }
 }
 async function saveTxnToSupa(t){
   const body={foyer_id:FOYER_ID,type:t.type,date:t.date,store:t.store,payment:t.payment,sub:t.sub||0,tps:t.tps||0,tvq:t.tvq||0,tot:t.tot,montant:t.montant||0,compte_id:t.compteId||null};
@@ -725,8 +730,8 @@ async function saveTxnToSupa(t){
 }
 async function saveProjetToSupa(p){
   const body={foyer_id:FOYER_ID,name:p.name,cat:p.cat,budget:p.budget,status:p.status,start_date:p.start||null,end_date:p.end||null,notes:p.notes||''};
-  if(p.id>1000000){const res=await sbPost('projets',body);p.id=res[0].id;}
-  else await sbPatch('projets',`?id=eq.${p.id}`,body);
+  if(!p._persisted){const res=await sbPost('projets',body);p.id=res[0].id;p._persisted=true;}
+  else await sbPatch('projets',`?id=eq.${p.id}&foyer_id=eq.${FOYER_ID}`,body);
 }
 async function saveProjetDep(dep,projId){
   const body={foyer_id:FOYER_ID,projet_id:projId,description:dep.desc,amt:dep.amt,tax:dep.tax,tot:dep.tot,date:dep.date};
