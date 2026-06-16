@@ -186,7 +186,7 @@ td input:focus,td select:focus{outline:none;border-color:var(--acc)}
 <div class="mobile-topbar">
   <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">☰</button>
   <div class="logo-t" id="logo-title-mobile">💰 Budget Famille</div>
-  <div style="width:32px"></div>
+  <button onclick="toggleDark()" id="dark-btn-mobile" title="Mode sombre" style="background:none;border:1px solid var(--bdr);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:16px;color:var(--mut)">🌙</button>
 </div>
 <div class="sb-overlay" id="sb-overlay" onclick="toggleSidebar()"></div>
 <div class="app">
@@ -622,12 +622,12 @@ async function loadFromSupabase(foyerId){
   S.settings.tps=f.tps||0.05;
   S.settings.tvq=f.tvq||0.09975;
 
-  S.revenus=revenus.map(r=>({id:r.id,name:r.name,amount:+r.amount,freq:r.freq,week:r.week,jour:r.jour||20,_persisted:true}));
-  S.depFixes=depFixes.map(d=>({id:d.id,name:d.name,amount:+d.amount,week:d.week,_persisted:true}));
-  S.depVar=depVar.map(d=>({id:d.id,name:d.name,amount:+d.amount,cat:d.cat,_persisted:true}));
-  S.depPonct=depPonct.map(d=>({id:d.id,name:d.name,amount:+d.amount,cat:d.cat,mois:d.mois||[],_persisted:true}));
-  S.paiesReelles=paiesReelles.map(p=>({id:p.id,revId:p.rev_id,date:p.date,montant:+p.montant,note:p.note||'',_persisted:true}));
-  S.comptes=comptes.map(c=>({id:c.id,name:c.name,type:c.type,color:c.color,solde:+c.solde,objectif:+c.objectif,_persisted:true}));
+  S.revenus=revenus.map(r=>({id:+r.id,name:r.name,amount:+r.amount,freq:r.freq,week:r.week,jour:r.jour||20,_persisted:true}));
+  S.depFixes=depFixes.map(d=>({id:+d.id,name:d.name,amount:+d.amount,week:d.week,_persisted:true}));
+  S.depVar=depVar.map(d=>({id:+d.id,name:d.name,amount:+d.amount,cat:d.cat,_persisted:true}));
+  S.depPonct=depPonct.map(d=>({id:+d.id,name:d.name,amount:+d.amount,cat:d.cat,mois:d.mois||[],_persisted:true}));
+  S.paiesReelles=paiesReelles.map(p=>({id:+p.id,revId:+p.rev_id,date:p.date,montant:+p.montant,note:p.note||'',_persisted:true}));
+  S.comptes=comptes.map(c=>({id:+c.id,name:c.name,type:c.type,color:c.color,solde:+c.solde,objectif:+c.objectif,_persisted:true}));
 
   // Transactions avec leurs items
   const itemsMap={};
@@ -636,7 +636,7 @@ async function loadFromSupabase(foyerId){
     itemsMap[i.transaction_id].push({id:i.id,name:i.name,cat:i.cat,price:+i.price,tax:i.tax,tot:+i.tot});
   });
   S.transactions=transactions.map(t=>({
-    id:t.id,type:t.type,date:t.date,store:t.store,payment:t.payment,
+    id:+t.id,type:t.type,date:t.date,store:t.store,payment:t.payment,
     sub:+t.sub,tps:+t.tps,tvq:+t.tvq,tot:+t.tot,
     montant:+t.montant,compteId:t.compte_id,
     items:itemsMap[t.id]||[]
@@ -649,15 +649,15 @@ async function loadFromSupabase(foyerId){
     depsMap[d.projet_id].push({id:d.id,desc:d.description,amt:+d.amt,tax:d.tax,tot:+d.tot,date:d.date});
   });
   S.projets=projets.map(p=>({
-    id:p.id,name:p.name,cat:p.cat,budget:+p.budget,status:p.status,
+    id:+p.id,name:p.name,cat:p.cat,budget:+p.budget,status:p.status,
     start:p.start_date,end:p.end_date,notes:p.notes||'',
     deps:depsMap[p.id]||[],_persisted:true
   }));
 
   if(cats.length>0){
-    S.settings.cats=cats.map(c=>({id:c.id,name:c.name,icon:c.icon,color:c.color,_persisted:true}));
+    S.settings.cats=cats.map(c=>({id:+c.id,name:c.name,icon:c.icon,color:c.color,_persisted:true}));
   }
-  S.rappels=rappels.map(r=>({id:r.id,name:r.name,amt:r.amount||0,day:r.due_date?new Date(r.due_date).getDate():1,freq:r.recurrence||'mensuel',active:r.active,_persisted:true}));
+  S.rappels=rappels.map(r=>({id:+r.id,name:r.name,amt:r.amount||0,day:r.due_date?new Date(r.due_date).getDate():1,freq:r.recurrence||'mensuel',active:r.active,_persisted:true}));
   // Banques et objectifs depuis JSON dans foyer (robuste si colonne absente)
   try{const b=f.banques;S.settings.banques=b&&b!=='null'?JSON.parse(b):[];}catch{S.settings.banques=[];}
   try{const o=f.objectifs_annuels;S.settings.objectifsAnnuels=o&&o!=='null'?JSON.parse(o):[];}catch{S.settings.objectifsAnnuels=[];}
@@ -844,7 +844,9 @@ async function initApp(){
   // Thème
   const t=localStorage.getItem('theme');
   if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');}
-  const db=document.getElementById('dark-btn');if(db)db.textContent=t==='dark'?'☀️':'🌙';
+  const icon=t==='dark'?'☀️':'🌙';
+  const db=document.getElementById('dark-btn');if(db)db.textContent=icon;
+  const dbm=document.getElementById('dark-btn-mobile');if(dbm)dbm.textContent=icon;
   // Session déjà active ?
   const savedFoyerId=sessionStorage.getItem('foyer_id');
   if(savedFoyerId){
@@ -873,9 +875,14 @@ function go(p){
 }
 function toggleDark(){
   const isDark=document.documentElement.getAttribute('data-theme')==='dark';
-  document.documentElement.setAttribute('data-theme',isDark?'light':'dark');
-  localStorage.setItem('theme',isDark?'light':'dark');
-  document.getElementById('dark-btn').textContent=isDark?'🌙':'☀️';
+  const newTheme=isDark?'light':'dark';
+  document.documentElement.setAttribute('data-theme',newTheme);
+  localStorage.setItem('theme',newTheme);
+  const icon=isDark?'🌙':'☀️';
+  const iconFull=isDark?'🌙 Mode sombre':'☀️ Mode clair';
+  const db=document.getElementById('dark-btn');if(db)db.textContent=icon;
+  const dbm=document.getElementById('dark-btn-mobile');if(dbm)dbm.textContent=icon;
+  const dbs=document.getElementById('dark-label-settings');if(dbs)dbs.textContent=iconFull;
 }
 // Applique le thème sauvegardé au chargement
 (()=>{const t=localStorage.getItem('theme');if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');}})();
@@ -1720,6 +1727,19 @@ function pgSettings(){
   </div>
 
   <!-- DONNÉES -->
+  <div class="card sett-section">
+    <div class="sett-title">🎨 Apparence</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0">
+      <div>
+        <div style="font-size:14px;font-weight:500">Mode sombre</div>
+        <div style="font-size:12px;color:var(--mut);margin-top:2px">Réduit la luminosité de l'interface</div>
+      </div>
+      <button onclick="toggleDark()" id="dark-btn-settings"
+        style="background:var(--bg);border:1px solid var(--bdr);border-radius:20px;padding:6px 16px;font-size:14px;cursor:pointer;color:var(--txt);display:flex;align-items:center;gap:8px;font-family:inherit">
+        <span id="dark-label-settings">${document.documentElement.getAttribute('data-theme')==='dark'?'☀️ Mode clair':'🌙 Mode sombre'}</span>
+      </button>
+    </div>
+  </div>
   <div class="card sett-section">
     <div class="sett-title">💾 Données</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
