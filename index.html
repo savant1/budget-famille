@@ -650,9 +650,12 @@ async function loadFromSupabase(foyerId){
   }));
 
   if(cats.length>0){
-    S.settings.cats=cats.map(c=>({id:c.id,name:c.name,icon:c.icon,color:c.color}));
+    S.settings.cats=cats.map(c=>({id:c.id,name:c.name,icon:c.icon,color:c.color,_persisted:true}));
   }
-  S.rappels=rappels.map(r=>({id:r.id,name:r.name,amount:+r.amount,dueDate:r.due_date,recurrence:r.recurrence,active:r.active}));
+  S.rappels=rappels.map(r=>({id:r.id,name:r.name,amt:r.amount||0,day:r.due_date?new Date(r.due_date).getDate():1,freq:r.recurrence||'mensuel',active:r.active,_persisted:true}));
+  // Banques et objectifs depuis JSON dans foyer
+  try{S.settings.banques=JSON.parse(f.banques||'[]');}catch{S.settings.banques=[];}
+  try{S.settings.objectifsAnnuels=JSON.parse(f.objectifs_annuels||'[]');}catch{S.settings.objectifsAnnuels=[];}
 }
 
 // ─── SAUVEGARDE SUPABASE ──────────────────────────────────────
@@ -677,11 +680,7 @@ function save(){
   const mt=document.getElementById('logo-title-mobile');if(mt)mt.textContent='💰 '+S.settings.foyer.nom;
   // Sync Supabase en arrière-plan
   queueSave(async()=>{
-    await sbPatch('foyer',`?id=eq.${FOYER_ID}`,{
-      nom:S.settings.foyer.nom,adulte1:S.settings.foyer.adulte1,
-      adulte2:S.settings.foyer.adulte2,nb_personnes:S.settings.foyer.nbPersonnes,
-      tps:S.settings.tps,tvq:S.settings.tvq
-    });
+    await sbSaveSettings();
     document.getElementById('sv-ts').textContent='Sauvegardé '+new Date().toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'});
   });
 }
@@ -739,6 +738,31 @@ async function saveProjetDep(dep,projId){
 }
 async function deleteRow(table,id){
   await sbDelete(table,`?id=eq.${id}`);
+}
+
+// ─── SETTINGS SUPABASE ────────────────────────────────────────
+async function sbSaveCat(c){
+  const payload={foyer_id:FOYER_ID,name:c.name,icon:c.icon,color:c.color};
+  if(!c._persisted){const res=await sbPost('categories',payload);c.id=res[0].id;c._persisted=true;}
+  else await sbPatch('categories',`?id=eq.${c.id}&foyer_id=eq.${FOYER_ID}`,payload);
+}
+async function sbSaveRappel(r){
+  const payload={foyer_id:FOYER_ID,name:r.name,amount:r.amt||0,due_date:null,recurrence:r.freq||'mensuel',active:true};
+  if(!r._persisted){const res=await sbPost('rappels',payload);r.id=res[0].id;r._persisted=true;}
+  else await sbPatch('rappels',`?id=eq.${r.id}&foyer_id=eq.${FOYER_ID}`,payload);
+}
+// Banques et objectifs sont stockés en JSON dans la table foyer
+async function sbSaveSettings(){
+  await sbPatch('foyer',`?id=eq.${FOYER_ID}`,{
+    nom:S.settings.foyer.nom,
+    adulte1:S.settings.foyer.adulte1,
+    adulte2:S.settings.foyer.adulte2,
+    nb_personnes:S.settings.foyer.nbPersonnes,
+    tps:S.settings.tps,
+    tvq:S.settings.tvq,
+    banques:JSON.stringify(S.settings.banques||[]),
+    objectifs_annuels:JSON.stringify(S.settings.objectifsAnnuels||[]),
+  });
 }
 
 // uid temporaire (sera remplacé par l'id Supabase après insertion)
@@ -1586,11 +1610,11 @@ function pgSettings(){
       <thead><tr><th>Institution</th><th>Type</th><th></th></tr></thead>
       <tbody>
       ${(st.banques||[]).map((b,i)=>`<tr>
-        <td><input type="text" value="${b.nom}" oninput="S.settings.banques[${i}].nom=this.value;save()"></td>
-        <td><select onchange="S.settings.banques[${i}].type=this.value;save()">
+        <td><input type="text" value="${b.nom}" oninput="S.settings.banques[${i}].nom=this.value;queueSave(async()=>await sbSaveSettings());save()"></td>
+        <td><select onchange="S.settings.banques[${i}].type=this.value;queueSave(async()=>await sbSaveSettings());save()">
           ${['Caisse populaire','Banque','Courtier','Autre'].map(t=>`<option ${b.type===t?'selected':''}>${t}</option>`).join('')}
         </select></td>
-        <td><button class="del" onclick="S.settings.banques.splice(${i},1);save();render()">✕</button></td>
+        <td><button class="del" onclick="S.settings.banques.splice(${i},1);queueSave(async()=>await sbSaveSettings());save();render()">✕</button></td>
       </tr>`).join('')}
       ${st.banques.length===0?'<tr><td colspan="3" style="color:var(--mut);text-align:center;padding:1rem">Aucune institution.</td></tr>':''}
       </tbody>
@@ -1609,14 +1633,14 @@ function pgSettings(){
         const real=S.transactions.filter(t=>t.type==='epargne'&&t.date.startsWith(o.annee.toString())).reduce((s,t)=>s+t.montant,0);
         const pct=o.cible>0?Math.min(Math.round(real/o.cible*100),100):0;
         return`<tr>
-          <td><input type="text" value="${o.nom}" oninput="S.settings.objectifsAnnuels[${i}].nom=this.value;save()"></td>
-          <td><input type="number" value="${o.annee}" min="2020" max="2040" style="max-width:80px" oninput="S.settings.objectifsAnnuels[${i}].annee=parseInt(this.value)||2024;save()"></td>
-          <td><input type="number" value="${o.cible}" min="0" step="500" style="max-width:110px" oninput="S.settings.objectifsAnnuels[${i}].cible=parseFloat(this.value)||0;save()"></td>
+          <td><input type="text" value="${o.nom}" oninput="S.settings.objectifsAnnuels[${i}].nom=this.value;queueSave(async()=>await sbSaveSettings());save()"></td>
+          <td><input type="number" value="${o.annee}" min="2020" max="2040" style="max-width:80px" oninput="S.settings.objectifsAnnuels[${i}].annee=parseInt(this.value)||2024;queueSave(async()=>await sbSaveSettings());save()"></td>
+          <td><input type="number" value="${o.cible}" min="0" step="500" style="max-width:110px" oninput="S.settings.objectifsAnnuels[${i}].cible=parseFloat(this.value)||0;queueSave(async()=>await sbSaveSettings());save()"></td>
           <td>
             <div style="font-size:12px;font-family:'DM Mono',monospace;color:${pct>=100?'var(--acc)':'var(--txt)'}">${fmt(real)} (${pct}%)</div>
             <div class="pw"><div class="pb" style="width:${pct}%;background:var(--pur)"></div></div>
           </td>
-          <td><button class="del" onclick="S.settings.objectifsAnnuels.splice(${i},1);save();render()">✕</button></td>
+          <td><button class="del" onclick="S.settings.objectifsAnnuels.splice(${i},1);queueSave(async()=>await sbSaveSettings());save();render()">✕</button></td>
         </tr>`;}).join('')}
       ${st.objectifsAnnuels.length===0?'<tr><td colspan="5" style="color:var(--mut);text-align:center;padding:1rem">Aucun objectif défini.</td></tr>':''}
       </tbody>
@@ -1690,17 +1714,20 @@ function saveCat(){
   const icon=document.getElementById('cat-icon').value;
   const color=document.getElementById('cat-color').value;
   const obj={id:editCatId||uid(),name,icon,color};
-  if(editCatId){const i=S.settings.cats.findIndex(x=>x.id===editCatId);if(i>=0)S.settings.cats[i]=obj;}
+  if(editCatId){const i=S.settings.cats.findIndex(x=>x.id===editCatId);if(i>=0){obj._persisted=S.settings.cats[i]._persisted;S.settings.cats[i]=obj;}}
   else S.settings.cats.push(obj);
+  queueSave(async()=>await sbSaveCat(obj));
   save();closeM('m-cat');render();
 }
 function delCat(id){
-  if(!confirm('Supprimer cette catégorie ?'))return;
-  S.settings.cats=S.settings.cats.filter(x=>x.id!==id);
-  save();render();
+  customConfirm('Supprimer','Supprimer cette catégorie ?',()=>{
+    S.settings.cats=S.settings.cats.filter(x=>x.id!==id);
+    queueSave(async()=>await deleteRow('categories',id));
+    save();render();
+  });
 }
-function addBanque(){S.settings.banques.push({nom:'Nouvelle institution',type:'Banque'});save();render();}
-function addObjAnnuel(){S.settings.objectifsAnnuels.push({id:uid(),nom:'Objectif épargne',cible:5000,annee:new Date().getFullYear()});save();render();}
+function addBanque(){S.settings.banques.push({nom:'Nouvelle institution',type:'Banque'});queueSave(async()=>await sbSaveSettings());save();render();}
+function addObjAnnuel(){S.settings.objectifsAnnuels.push({id:uid(),nom:'Objectif épargne',cible:5000,annee:new Date().getFullYear()});queueSave(async()=>await sbSaveSettings());save();render();}
 
 // ─── RAPPELS ─────────────────────────────────────────────────
 let editRappelId=null;
@@ -1718,11 +1745,16 @@ function openRappel(id){
 function saveRappel(){
   const name=document.getElementById('rp-name').value.trim();if(!name)return;
   const obj={id:editRappelId||uid(),name,day:parseInt(document.getElementById('rp-day').value)||1,freq:document.getElementById('rp-freq').value,amt:parseFloat(document.getElementById('rp-amt').value)||0};
-  if(editRappelId){const i=S.rappels.findIndex(x=>x.id===editRappelId);if(i>=0)S.rappels[i]=obj;}
+  if(editRappelId){const i=S.rappels.findIndex(x=>x.id===editRappelId);if(i>=0){obj._persisted=S.rappels[i]._persisted;S.rappels[i]=obj;}}
   else S.rappels.push(obj);
+  queueSave(async()=>await sbSaveRappel(obj));
   save();closeM('m-rappel');render();
 }
-function delRappel(id){S.rappels=S.rappels.filter(x=>x.id!==id);save();render();}
+function delRappel(id){
+  S.rappels=S.rappels.filter(x=>x.id!==id);
+  queueSave(async()=>await deleteRow('rappels',id));
+  save();render();
+}
 
 // ─── HELPERS ÉTAT ─────────────────────────────────────────────
 function upd(arr,id,field,val){
