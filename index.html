@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#f5f4f0;--sur:#fff;--s2:#f0ede8;--bdr:#e0dbd4;--txt:#1a1916;--mut:#7a756e;--acc:#2d6a4f;--al:#e8f5ee;--dan:#c0392b;--dl:#fdecea;--war:#b7791f;--wl:#fef3cd;--inf:#1a5276;--il:#eaf2fb;--pur:#6c3483;--pl:#f5eef8;--r:10px;--rl:14px}
+[data-theme="dark"]{--bg:#1a1917;--sur:#252320;--s2:#2a2825;--bdr:#3a3733;--txt:#f0ede8;--mut:#9a958e;--acc:#4a9a6f;--al:#1a2e24;--dan:#e05545;--dl:#2e1a18;--war:#d4921f;--wl:#2e2410;--inf:#2a6a96;--il:#162033;--pur:#9b59b6;--pl:#231530}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--txt);font-size:14px;line-height:1.5;min-height:100vh}
 .app{display:flex;flex:1;overflow:hidden}
@@ -206,14 +207,17 @@ td input:focus,td select:focus{outline:none;border-color:var(--acc)}
     <div class="ni-sep">Configuration</div>
     <div class="ni" onclick="go('settings')">⚙️ Paramètres</div>
   </div>
-  <div class="sb-ft" id="sv-ts">Non sauvegardé</div>
+  <div class="sb-ft" style="display:flex;justify-content:space-between;align-items:center">
+    <span id="sv-ts">Non sauvegardé</span>
+    <button onclick="toggleDark()" id="dark-btn" title="Mode sombre" style="background:none;border:1px solid var(--bdr);border-radius:6px;padding:3px 7px;cursor:pointer;font-size:14px;color:var(--mut)">🌙</button>
+  </div>
 </nav>
 <main class="main" id="main"></main>
 </div>
 
 <!-- MODAL TRANSACTION -->
 <div class="modal-bg" id="m-txn">
-<div class="modal">
+<div class="modal" style="width:680px;max-width:98vw">
   <div class="mh"><h2>Nouvelle transaction</h2><button class="mx" onclick="closeM('m-txn')">✕</button></div>
   <div class="fr">
     <div class="fg"><label class="fl">Date</label><input type="date" class="fc" id="t-date"></div>
@@ -227,19 +231,20 @@ td input:focus,td select:focus{outline:none;border-color:var(--acc)}
       <select class="fc" id="t-type" onchange="toggleEpSection()">
         <option value="depense">Dépense ordinaire</option>
         <option value="epargne">💜 Dépôt épargne</option>
+        <option value="retrait">🔴 Retrait épargne</option>
       </select>
     </div>
   </div>
   <div id="ep-section" style="display:none">
-    <div style="background:var(--pl);border:1px solid var(--pur);border-radius:var(--r);padding:12px;margin-bottom:4px">
+    <div id="ep-section-inner" style="border-radius:var(--r);padding:12px;margin-bottom:4px">
       <div class="fr">
         <div class="fg" style="margin-bottom:0"><label class="fl">Compte d'épargne</label><select class="fc" id="t-compte"></select></div>
-        <div class="fg" style="margin-bottom:0"><label class="fl">Montant déposé ($)</label><input type="number" class="fc" id="t-ep-amt" min="0" step="10" placeholder="250"></div>
+        <div class="fg" style="margin-bottom:0"><label class="fl" id="t-ep-label">Montant ($)</label><input type="number" class="fc" id="t-ep-amt" min="0" step="10" placeholder="250"></div>
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:1rem;justify-content:flex-end">
       <button class="btn bg2" onclick="closeM('m-txn')">Annuler</button>
-      <button class="btn bp" onclick="saveTxnEp()">Enregistrer le dépôt</button>
+      <button class="btn bp" id="ep-save-btn" onclick="saveTxnEp()">Enregistrer</button>
     </div>
   </div>
   <div id="dep-section">
@@ -653,9 +658,9 @@ async function loadFromSupabase(foyerId){
     S.settings.cats=cats.map(c=>({id:c.id,name:c.name,icon:c.icon,color:c.color,_persisted:true}));
   }
   S.rappels=rappels.map(r=>({id:r.id,name:r.name,amt:r.amount||0,day:r.due_date?new Date(r.due_date).getDate():1,freq:r.recurrence||'mensuel',active:r.active,_persisted:true}));
-  // Banques et objectifs depuis JSON dans foyer
-  try{S.settings.banques=JSON.parse(f.banques||'[]');}catch{S.settings.banques=[];}
-  try{S.settings.objectifsAnnuels=JSON.parse(f.objectifs_annuels||'[]');}catch{S.settings.objectifsAnnuels=[];}
+  // Banques et objectifs depuis JSON dans foyer (robuste si colonne absente)
+  try{const b=f.banques;S.settings.banques=b&&b!=='null'?JSON.parse(b):[];}catch{S.settings.banques=[];}
+  try{const o=f.objectifs_annuels;S.settings.objectifsAnnuels=o&&o!=='null'?JSON.parse(o):[];}catch{S.settings.objectifsAnnuels=[];}
 }
 
 // ─── SAUVEGARDE SUPABASE ──────────────────────────────────────
@@ -836,6 +841,10 @@ async function initDefaultData(foyerId){
 
 // ─── INIT APP ─────────────────────────────────────────────────
 async function initApp(){
+  // Thème
+  const t=localStorage.getItem('theme');
+  if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');}
+  const db=document.getElementById('dark-btn');if(db)db.textContent=t==='dark'?'☀️':'🌙';
   // Session déjà active ?
   const savedFoyerId=sessionStorage.getItem('foyer_id');
   if(savedFoyerId){
@@ -862,6 +871,14 @@ function go(p){
   render();
   closeSidebar();
 }
+function toggleDark(){
+  const isDark=document.documentElement.getAttribute('data-theme')==='dark';
+  document.documentElement.setAttribute('data-theme',isDark?'light':'dark');
+  localStorage.setItem('theme',isDark?'light':'dark');
+  document.getElementById('dark-btn').textContent=isDark?'🌙':'☀️';
+}
+// Applique le thème sauvegardé au chargement
+(()=>{const t=localStorage.getItem('theme');if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');}})();
 function toggleSidebar(){
   document.getElementById('sidebar').classList.toggle('open');
   document.getElementById('sb-overlay').classList.toggle('open');
@@ -1003,6 +1020,26 @@ function pgDash(){
     <div class="mc"><div class="ml">Solde estimé</div><div class="mv ${s>=0?'g':'r'}">${fmtI(s)}</div><div class="ms">${rM>0?Math.round(s/rM*100):0}% des revenus</div></div>
     <div class="mc"><div class="ml">Dépenses réelles</div><div class="mv">${fmt(txTot)}</div><div class="ms">${periodLabel} · ${txFiltered.length} txn</div></div>
   </div>
+  <!-- Revenus réels filtrés -->
+  ${(()=>{
+    const paiesFiltrees=S.paiesReelles.filter(p=>{
+      const yr=p.date.slice(0,4);
+      const mo=p.date.slice(5,7);
+      if(f.year&&yr!==f.year)return false;
+      if(f.month&&mo!==f.month)return false;
+      return true;
+    });
+    const totReal=paiesFiltrees.reduce((s,p)=>s+p.montant,0);
+    const ecartReal=totReal-rM*(f.month?1:(f.year?12:1));
+    if(paiesFiltrees.length===0)return '';
+    return`<div class="mc" style="background:var(--al);border-color:var(--acc);margin-bottom:1rem;padding:1rem">
+      <div class="ml">Revenus réels (${periodLabel})</div>
+      <div class="mv g">${fmt(totReal)}</div>
+      <div class="ms" style="color:${ecartReal>=0?'var(--acc)':'var(--dan)'}">
+        Écart vs planifié : ${ecartReal>=0?'+':''}${fmt(ecartReal)} · ${paiesFiltrees.length} versement(s)
+      </div>
+    </div>`;
+  })()}
   ${ponctAlert}
 
   <!-- KPI Épargnes -->
@@ -1272,9 +1309,11 @@ function pgEpargnes(){
   ${S.comptes.map(c=>{
     const pct=c.objectif>0?Math.min(Math.round(c.solde/c.objectif*100),100):0;
     const hist=(histByCompte[c.id]||[]).sort((a,b)=>b.date.localeCompare(a.date));
-    const totDep=hist.reduce((s,t)=>s+t.montant,0);
-    const moisDep=[...new Set(hist.map(t=>t.date.slice(0,7)))];
-    const moy=moisDep.length>0?totDep/moisDep.length:0;
+    const depots=hist.filter(t=>t.type!=='retrait');
+    const retraits=hist.filter(t=>t.type==='retrait');
+    const totNet=hist.reduce((s,t)=>s+t.montant,0);
+    const moisDep=[...new Set(depots.map(t=>t.date.slice(0,7)))];
+    const moy=moisDep.length>0?depots.reduce((s,t)=>s+t.montant,0)/moisDep.length:0;
     return`<div class="compte-card">
       <div class="compte-header">
         <div style="display:flex;align-items:center;gap:10px">
@@ -1287,6 +1326,8 @@ function pgEpargnes(){
             ${c.objectif>0?`<div style="font-size:12px;color:var(--mut)">/ ${fmt(c.objectif)}</div>`:''}
           </div>
           <button class="btn bg2 bs" onclick="openCompte(${c.id})">Modifier</button>
+          <button class="btn bg2 bs" onclick="openTxnForCompte(${c.id},'epargne')" title="Dépôt">+ Dépôt</button>
+          <button class="btn bg2 bs" style="color:var(--dan);border-color:var(--dan)" onclick="openTxnForCompte(${c.id},'retrait')" title="Retrait">− Retrait</button>
           <button class="del" onclick="delCompte(${c.id})">✕</button>
         </div>
       </div>
@@ -1301,24 +1342,27 @@ function pgEpargnes(){
       </div>`:''}
       <div class="mg3" style="gap:8px;margin-bottom:${hist.length>0?'12px':'0'}">
         <div style="background:var(--bg);border-radius:var(--r);padding:8px;text-align:center">
-          <div class="ml">Total déposé</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--pur)">${fmt(totDep)}</div>
+          <div class="ml">Net période</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:${totNet>=0?'var(--pur)':'var(--dan)'}">${totNet>=0?'+':''}${fmt(totNet)}</div>
         </div>
         <div style="background:var(--bg);border-radius:var(--r);padding:8px;text-align:center">
-          <div class="ml">Moy. mensuelle</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600">${moy>0?fmt(moy):'—'}</div>
+          <div class="ml">Moy. dépôt/mois</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600">${moy>0?fmt(moy):'—'}</div>
         </div>
         <div style="background:var(--bg);border-radius:var(--r);padding:8px;text-align:center">
-          <div class="ml">Nb dépôts</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600">${hist.length}</div>
+          <div class="ml">Mouvements</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600">${depots.length}↑ ${retraits.length}↓</div>
         </div>
       </div>
-      ${hist.length>0?`<table style="font-size:12px"><thead><tr><th>Date</th><th>Note</th><th>Montant</th><th></th></tr></thead><tbody>
-        ${hist.slice(0,6).map(t=>`<tr>
-          <td style="font-family:'DM Mono',monospace">${t.date}</td>
-          <td style="color:var(--mut)">${t.store||'—'}</td>
-          <td style="font-family:'DM Mono',monospace;font-weight:600;color:var(--pur)">+${fmt(t.montant)}</td>
-          <td><button class="del" onclick="delTxn(${t.id})">✕</button></td>
-        </tr>`).join('')}
-      </tbody></table>`:'<div style="font-size:12px;color:var(--mut);font-style:italic">Aucun dépôt dans cette période.</div>'}
-      <button class="add" style="margin-top:10px" onclick="openTxnForCompte(${c.id})">+ Enregistrer un dépôt</button>
+      ${hist.length>0?`<table style="font-size:12px"><thead><tr><th>Date</th><th>Note</th><th>Type</th><th>Montant</th><th></th></tr></thead><tbody>
+        ${hist.slice(0,8).map(t=>{
+          const isR=t.type==='retrait';
+          return`<tr>
+            <td style="font-family:'DM Mono',monospace">${t.date}</td>
+            <td style="color:var(--mut)">${t.store||'—'}</td>
+            <td><span class="badge ${isR?'bg-r':'bg-p'}">${isR?'Retrait':'Dépôt'}</span></td>
+            <td style="font-family:'DM Mono',monospace;font-weight:600;color:${isR?'var(--dan)':'var(--pur)'}">${isR?'−':'+'}${fmt(Math.abs(t.montant))}</td>
+            <td><button class="del" onclick="delTxn(${t.id})">✕</button></td>
+          </tr>`;}).join('')}
+      </tbody></table>`:'<div style="font-size:12px;color:var(--mut);font-style:italic">Aucun mouvement dans cette période.</div>'}
+      <button class="add" style="margin-top:10px" onclick="openTxnForCompte(${c.id},'epargne')">+ Enregistrer un dépôt</button>
     </div>`;}).join('')}`;
 }
 
@@ -1626,6 +1670,7 @@ function pgSettings(){
     <div class="ch"><div class="sett-title" style="margin-bottom:0;border-bottom:none">🎯 Objectifs financiers annuels</div>
       <button class="btn bp bs" onclick="addObjAnnuel()">+ Ajouter</button>
     </div>
+    <p style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Cibles d'épargne globales par année (ex: épargner 9 720$ en 2026). Distinct des objectifs par compte (REER, CELI...) qui se configurent dans la page <b>Épargnes → Modifier</b>.</p>
     <table>
       <thead><tr><th>Objectif</th><th>Année</th><th>Cible ($)</th><th>Réalisé</th><th></th></tr></thead>
       <tbody>
@@ -1935,9 +1980,18 @@ function savePonct(){
 // ─── MODAL TRANSACTION ────────────────────────────────────────
 let tItems=[];
 function toggleEpSection(){
-  const isEp=document.getElementById('t-type').value==='epargne';
+  const type=document.getElementById('t-type').value;
+  const isEp=type==='epargne'||type==='retrait';
   document.getElementById('ep-section').style.display=isEp?'block':'none';
   document.getElementById('dep-section').style.display=isEp?'none':'block';
+  if(isEp){
+    const isRetrait=type==='retrait';
+    document.getElementById('ep-section-inner').style.background=isRetrait?'var(--dl)':'var(--pl)';
+    document.getElementById('ep-section-inner').style.border=`1px solid ${isRetrait?'var(--dan)':'var(--pur)'}`;
+    document.getElementById('t-ep-label').textContent=isRetrait?'Montant retiré ($)':'Montant déposé ($)';
+    document.getElementById('ep-save-btn').textContent=isRetrait?'Enregistrer le retrait':'Enregistrer le dépôt';
+    document.getElementById('ep-save-btn').style.background=isRetrait?'var(--dan)':'';
+  }
 }
 function populateCompteSelect(selId,selectedId){
   document.getElementById(selId).innerHTML=S.comptes.map(c=>`<option value="${c.id}" ${c.id===selectedId?'selected':''}>${c.name} (${c.type})</option>`).join('');
@@ -1954,28 +2008,58 @@ function openTxn(){
   renderTItems();
   document.getElementById('m-txn').classList.add('open');
 }
-function openTxnForCompte(cid){
+function openTxnForCompte(cid,type='epargne'){
   openTxn();
-  document.getElementById('t-type').value='epargne';
+  document.getElementById('t-type').value=type;
   toggleEpSection();
   populateCompteSelect('t-compte',cid);
 }
+
+// ── #6 ARTICLES — affichage en cartes pour plus d'ergonomie ──
 function renderTItems(){
   const cats=S.settings.cats;
-  document.getElementById('t-items').innerHTML=`<table style="width:100%;font-size:13px;margin-bottom:4px">
-    <thead><tr><th>Article</th><th>Catégorie</th><th>Prix ($)</th><th>Taxes</th><th>TTC</th><th></th></tr></thead>
-    <tbody>${tItems.map(i=>`<tr>
-      <td><input type="text" value="${i.name}" placeholder="ex: Lait 2L" oninput="tItems.find(x=>x.id==${i.id}).name=this.value" style="min-width:85px"></td>
-      <td><select onchange="tItems.find(x=>x.id==${i.id}).cat=this.value">${cats.map(c=>`<option value="${c.name}" ${i.cat===c.name?'selected':''}>${c.icon} ${c.name}</option>`).join('')}</select></td>
-      <td><input type="number" value="${i.price}" min="0" step="0.01" style="max-width:75px" oninput="updTI(${i.id},'price',parseFloat(this.value)||0)"></td>
-      <td><select onchange="updTI(${i.id},'tax',this.value)" style="min-width:85px">
-        <option value="aucune" ${i.tax==='aucune'?'selected':''}>Aucune</option>
-        <option value="tps" ${i.tax==='tps'?'selected':''}>TPS ${((S.settings.tps||0.05)*100).toFixed(1)}%</option>
-        <option value="tpstvq" ${i.tax==='tpstvq'?'selected':''}>TPS+TVQ</option>
-      </select></td>
-      <td style="font-family:'DM Mono',monospace;font-size:12px">${fmt(i.tot)}</td>
-      <td><button class="del" onclick="rmTI(${i.id})">✕</button></td>
-    </tr>`).join('')}</tbody></table>`;
+  document.getElementById('t-items').innerHTML=tItems.map(i=>`
+    <div style="border:1px solid var(--bdr);border-radius:var(--r);padding:10px;margin-bottom:8px;background:var(--bg)">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div>
+          <div style="font-size:11px;font-weight:500;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Article</div>
+          <input type="text" value="${i.name}" placeholder="ex: Lait 2L"
+            oninput="tItems.find(x=>x.id==${i.id}).name=this.value"
+            style="width:100%;border:1px solid var(--bdr);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:13px;background:var(--sur);color:var(--txt)">
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:500;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Catégorie</div>
+          <select onchange="tItems.find(x=>x.id==${i.id}).cat=this.value"
+            style="width:100%;border:1px solid var(--bdr);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:13px;background:var(--sur);color:var(--txt)">
+            ${cats.map(c=>`<option value="${c.name}" ${i.cat===c.name?'selected':''}>${c.icon} ${c.name}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1">
+          <div style="font-size:11px;font-weight:500;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Prix ($)</div>
+          <input type="number" value="${i.price}" min="0" step="0.01" placeholder="0.00"
+            oninput="updTI(${i.id},'price',parseFloat(this.value)||0)"
+            style="width:100%;border:1px solid var(--bdr);border-radius:6px;padding:6px 8px;font-family:'DM Mono',monospace;font-size:14px;background:var(--sur);color:var(--txt)">
+        </div>
+        <div style="flex:1">
+          <div style="font-size:11px;font-weight:500;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Taxes</div>
+          <select onchange="updTI(${i.id},'tax',this.value)"
+            style="width:100%;border:1px solid var(--bdr);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:13px;background:var(--sur);color:var(--txt)">
+            <option value="aucune" ${i.tax==='aucune'?'selected':''}>Aucune</option>
+            <option value="tps" ${i.tax==='tps'?'selected':''}>TPS ${((S.settings.tps||0.05)*100).toFixed(1)}%</option>
+            <option value="tpstvq" ${i.tax==='tpstvq'?'selected':''}>TPS+TVQ (~15%)</option>
+          </select>
+        </div>
+        <div style="text-align:right;min-width:70px">
+          <div style="font-size:11px;font-weight:500;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Total</div>
+          <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:600;padding:6px 0">${fmt(i.tot)}</div>
+        </div>
+        <div style="padding-top:18px">
+          <button class="del" onclick="rmTI(${i.id})" style="padding:6px 8px">✕</button>
+        </div>
+      </div>
+    </div>`).join('');
   calcTSum();
 }
 function updTI(id,f,v){const i=tItems.find(x=>x.id===id);if(!i)return;i[f]=v;const t=calcTax(i.price,i.tax);i.tot=t.tot;renderTItems();}
@@ -2002,24 +2086,34 @@ function saveTxn(){
   save();closeM('m-txn');render();
 }
 function saveTxnEp(){
+  const type=document.getElementById('t-type').value; // 'epargne' ou 'retrait'
   const date=document.getElementById('t-date').value;if(!date)return;
-  const store=document.getElementById('t-store').value.trim()||'Dépôt';
+  const store=document.getElementById('t-store').value.trim()||(type==='retrait'?'Retrait':'Dépôt');
   const payment=document.getElementById('t-pay').value;
   const compteId=parseInt(document.getElementById('t-compte').value);
   const montant=parseFloat(document.getElementById('t-ep-amt').value)||0;
   if(!compteId||montant<=0)return;
-  const t={id:uid(),type:'epargne',date,store,payment,compteId,montant,tot:montant,items:[]};
+  const signedMontant=type==='retrait'?-montant:montant;
+  const t={id:uid(),type,date,store,payment,compteId,montant:signedMontant,tot:Math.abs(signedMontant),items:[]};
   S.transactions.unshift(t);
-  const c=S.comptes.find(x=>x.id===compteId);if(c){c.solde+=montant;queueSave(async()=>await saveCompte(c));}
+  const c=S.comptes.find(x=>x.id===compteId);
+  if(c){
+    c.solde=Math.max(0,c.solde+signedMontant);
+    queueSave(async()=>await saveCompte(c));
+  }
   queueSave(async()=>await saveTxnToSupa(t));
   save();closeM('m-txn');render();
 }
 function delTxn(id){
   const t=S.transactions.find(x=>x.id===id);if(!t)return;
   customConfirm('Supprimer la transaction','Supprimer définitivement cette transaction ?',async()=>{
-    if(t.type==='epargne'){
+    if(t.type==='epargne'||t.type==='retrait'){
       const c=S.comptes.find(x=>x.id===t.compteId);
-      if(c){c.solde=Math.max(0,c.solde-t.montant);queueSave(async()=>await saveCompte(c));}
+      if(c){
+        // Inverser l'effet : retrait positif → soustrait, dépôt → soustrait
+        c.solde=Math.max(0,c.solde-t.montant);
+        queueSave(async()=>await saveCompte(c));
+      }
     }
     S.transactions=S.transactions.filter(x=>x.id!==id);
     queueSave(async()=>await deleteRow('transactions',id));
@@ -2042,7 +2136,16 @@ function openCompte(id){
 }
 function saveCompteModal(){
   const name=document.getElementById('cp-name').value.trim();if(!name)return;
-  const obj={id:editCId||uid(),name,type:document.getElementById('cp-type').value,color:document.getElementById('cp-color').value,solde:parseFloat(document.getElementById('cp-solde').value)||0,objectif:parseFloat(document.getElementById('cp-obj').value)||0};
+  const existing=editCId?S.comptes.find(x=>x.id===editCId):null;
+  const obj={
+    id:editCId||uid(),
+    name,
+    type:document.getElementById('cp-type').value,
+    color:document.getElementById('cp-color').value,
+    solde:parseFloat(document.getElementById('cp-solde').value)||0,
+    objectif:parseFloat(document.getElementById('cp-obj').value)||0,
+    _persisted:existing?existing._persisted:false
+  };
   if(editCId){const i=S.comptes.findIndex(x=>x.id===editCId);if(i>=0)S.comptes[i]=obj;}
   else S.comptes.push(obj);
   queueSave(async()=>await saveCompte(obj));
