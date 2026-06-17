@@ -278,6 +278,9 @@ td input:focus,td select:focus{outline:none;border-color:var(--acc)}
     <div class="fg"><label class="fl">Date de paie</label><input type="date" class="fc" id="paie-date"></div>
     <div class="fg"><label class="fl">Montant reçu ($)</label><input type="number" class="fc" id="paie-montant" min="0" step="0.01"></div>
   </div>
+  <div class="fg"><label class="fl">Déposé dans le compte</label>
+    <select class="fc" id="paie-cb"></select>
+  </div>
   <div class="fg"><label class="fl">Note (optionnel)</label><input type="text" class="fc" id="paie-note" placeholder="ex: heures supplémentaires"></div>
   <div style="display:flex;gap:8px;margin-top:1rem;justify-content:flex-end">
     <button class="btn bg2" onclick="closeM('m-paie')">Annuler</button>
@@ -333,11 +336,7 @@ td input:focus,td select:focus{outline:none;border-color:var(--acc)}
       </select>
     </div>
     <div class="fg"><label class="fl">Titulaire</label>
-      <select class="fc" id="cb-titulaire">
-        <option value="Joint">Joint</option>
-        <option value="Adulte 1">Adulte 1</option>
-        <option value="Adulte 2">Adulte 2</option>
-      </select>
+      <select class="fc" id="cb-titulaire"></select>
     </div>
   </div>
   <div class="fr">
@@ -805,7 +804,7 @@ async function saveDepPonct(d){
   else await sbPatch('dep_ponct',`?id=eq.${d.id}&foyer_id=eq.${FOYER_ID}`,payload);
 }
 async function savePaieReelle(p){
-  const res=await sbPost('paies_reelles',{foyer_id:FOYER_ID,rev_id:p.revId,date:p.date,montant:p.montant,note:p.note||''});
+  const res=await sbPost('paies_reelles',{foyer_id:FOYER_ID,rev_id:p.revId,date:p.date,montant:p.montant,note:p.note||'',compte_bancaire_id:p.compteBancaireId||null});
   p.id=res[0].id;
 }
 async function saveCompte(c){
@@ -2105,14 +2104,18 @@ function openPaie(revId){
   const freqLabel=rev.freq==='mensuel'?'Versement mensuel':rev.freq==='trimestriel'?'Versement trimestriel':'Paie';
   document.getElementById('mpaie-title').textContent=`Saisir : ${freqLabel}`;
   document.getElementById('paie-revname').textContent=rev.name+' — planifié : '+fmt(rev.amount);
-  // Date par défaut intelligente
   let d=new Date();
-  if(rev.freq==='mensuel'&&rev.jour){
-    d=new Date(d.getFullYear(),d.getMonth(),rev.jour);
-  }
+  if(rev.freq==='mensuel'&&rev.jour){d=new Date(d.getFullYear(),d.getMonth(),rev.jour);}
   document.getElementById('paie-date').value=d.toISOString().split('T')[0];
   document.getElementById('paie-montant').value=rev.amount;
   document.getElementById('paie-note').value='';
+  // Peupler les comptes bancaires (chèques en priorité)
+  const cbSel=document.getElementById('paie-cb');
+  cbSel.innerHTML='<option value="">— Aucun compte —</option>'+
+    S.comptesBancaires.filter(c=>c.actif).map(c=>`<option value="${c.id}">${c.institution} · ${c.nom} (${c.type})</option>`).join('');
+  // Présélectionner le premier compte chèques joint
+  const defCB=S.comptesBancaires.find(c=>c.actif&&c.type==='Chèques'&&c.titulaire==='Joint');
+  if(defCB)cbSel.value=defCB.id;
   document.getElementById('m-paie').classList.add('open');
 }
 function savePaie(){
@@ -2120,8 +2123,14 @@ function savePaie(){
   const date=document.getElementById('paie-date').value;if(!date)return;
   const montant=parseFloat(document.getElementById('paie-montant').value)||0;
   const note=document.getElementById('paie-note').value.trim();
-  const p={id:uid(),revId,date,montant,note};
+  const cbId=parseInt(document.getElementById('paie-cb').value)||null;
+  const p={id:uid(),revId,date,montant,note,compteBancaireId:cbId};
   S.paiesReelles.push(p);
+  // Créditer le compte bancaire
+  if(cbId){
+    const cb=S.comptesBancaires.find(x=>x.id===cbId);
+    if(cb){cb.solde_actuel+=montant;queueSave(async()=>await saveCB(cb));}
+  }
   queueSave(async()=>await savePaieReelle(p));
   save();closeM('m-paie');render();
 }
@@ -2283,9 +2292,16 @@ function openCBModal(id){
   document.getElementById('cb-nom').value=c?.nom||'';
   document.getElementById('cb-type').value=c?.type||'Chèques';
   document.getElementById('cb-institution').value=c?.institution||'BNC';
-  document.getElementById('cb-titulaire').value=c?.titulaire||'Joint';
   document.getElementById('cb-solde').value=c?.solde_initial||'';
   document.getElementById('cb-limite').value=c?.limite_credit||'';
+  // Titulaire dynamique depuis les paramètres
+  const a1=S.settings.foyer.adulte1||'Adulte 1';
+  const a2=S.settings.foyer.adulte2||'Adulte 2';
+  const sel=document.getElementById('cb-titulaire');
+  sel.innerHTML=`<option value="Joint">Joint</option>
+    <option value="${a1}">${a1}</option>
+    <option value="${a2}">${a2}</option>`;
+  sel.value=c?.titulaire||'Joint';
   document.getElementById('m-cb').classList.add('open');
 }
 function saveCBModal(){
@@ -2376,8 +2392,8 @@ function renderTItems(){
       <div style="display:flex;align-items:center;gap:8px">
         <div style="flex:1">
           <div style="font-size:11px;font-weight:500;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Prix ($)</div>
-          <input type="number" value="${i.price}" min="0" step="0.01" placeholder="0.00"
-            oninput="updTI(${i.id},'price',parseFloat(this.value)||0)"
+          <input type="number" value="${i.price||''}" min="0" step="0.01" placeholder="0.00"
+            onchange="updTI(${i.id},'price',parseFloat(this.value)||0)"
             style="width:100%;border:1px solid var(--bdr);border-radius:6px;padding:6px 8px;font-family:'DM Mono',monospace;font-size:14px;background:var(--sur);color:var(--txt)">
         </div>
         <div style="flex:1">
