@@ -199,7 +199,8 @@ td input:focus,td select:focus{outline:none;border-color:var(--acc)}
     <div class="ni-sep">Principal</div>
     <div class="ni active" onclick="go('dash')">📊 Tableau de bord</div>
     <div class="ni" onclick="go('budget')">💵 Budget mensuel</div>
-    <div class="ni" onclick="go('epargnes')">🏦 Épargnes</div>
+    <div class="ni" onclick="go('comptes')">🏦 Comptes bancaires</div>
+    <div class="ni" onclick="go('epargnes')">💜 Épargnes</div>
     <div class="ni" onclick="go('transactions')">🧾 Transactions</div>
     <div class="ni-sep">Suivi</div>
     <div class="ni" onclick="go('maison')">🏠 Dépenses maison</div>
@@ -224,10 +225,10 @@ td input:focus,td select:focus{outline:none;border-color:var(--acc)}
     <div class="fg"><label class="fl">Magasin / Description</label><input type="text" class="fc" id="t-store" placeholder="ex: IGA Contrecoeur"></div>
   </div>
   <div class="fr">
-    <div class="fg"><label class="fl">Mode de paiement</label>
-      <select class="fc" id="t-pay"><option>Débit</option><option>Visa</option><option>Mastercard</option><option>Comptant</option><option>Virement</option></select>
+    <div class="fg"><label class="fl">Compte bancaire utilisé</label>
+      <select class="fc" id="t-cb-source"></select>
     </div>
-    <div class="fg"><label class="fl">Type</label>
+    <div class="fg"><label class="fl">Type de transaction</label>
       <select class="fc" id="t-type" onchange="toggleEpSection()">
         <option value="depense">Dépense ordinaire</option>
         <option value="epargne">💜 Dépôt épargne</option>
@@ -309,6 +310,65 @@ td input:focus,td select:focus{outline:none;border-color:var(--acc)}
 </div>
 </div>
 
+<!-- MODAL COMPTE BANCAIRE -->
+<div class="modal-bg" id="m-cb">
+<div class="modal" style="width:520px">
+  <div class="mh"><h2 id="mcb-title">Nouveau compte bancaire</h2><button class="mx" onclick="closeM('m-cb')">✕</button></div>
+  <input type="hidden" id="cb-id">
+  <div class="fr">
+    <div class="fg"><label class="fl">Nom du compte</label><input type="text" class="fc" id="cb-nom" placeholder="ex: Chèques joint"></div>
+    <div class="fg"><label class="fl">Type</label>
+      <select class="fc" id="cb-type">
+        <option>Chèques</option><option>Épargne</option><option>Débit</option>
+        <option>Crédit</option><option>Courtage</option>
+      </select>
+    </div>
+  </div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Institution</label>
+      <select class="fc" id="cb-institution">
+        <option value="BNC">BNC</option><option value="Desjardins">Desjardins</option>
+        <option value="CIBC">CIBC</option><option value="WealthSimple">WealthSimple</option>
+        <option value="Autre">Autre</option>
+      </select>
+    </div>
+    <div class="fg"><label class="fl">Titulaire</label>
+      <select class="fc" id="cb-titulaire">
+        <option value="Joint">Joint</option>
+        <option value="Adulte 1">Adulte 1</option>
+        <option value="Adulte 2">Adulte 2</option>
+      </select>
+    </div>
+  </div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Solde actuel ($)</label><input type="number" class="fc" id="cb-solde" min="0" step="0.01" placeholder="0"></div>
+    <div class="fg"><label class="fl">Limite de crédit ($) <span style="color:var(--mut);font-weight:400">(si applicable)</span></label><input type="number" class="fc" id="cb-limite" min="0" step="100" placeholder="0"></div>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:1rem;justify-content:flex-end">
+    <button class="btn bg2" onclick="closeM('m-cb')">Annuler</button>
+    <button class="btn bp" onclick="saveCBModal()">Enregistrer</button>
+  </div>
+</div>
+</div>
+
+<!-- MODAL VIREMENT -->
+<div class="modal-bg" id="m-virement">
+<div class="modal" style="width:480px">
+  <div class="mh"><h2>Virement entre comptes</h2><button class="mx" onclick="closeM('m-virement')">✕</button></div>
+  <div class="fg"><label class="fl">Date</label><input type="date" class="fc" id="vir-date"></div>
+  <div class="fg"><label class="fl">Montant ($)</label><input type="number" class="fc" id="vir-montant" min="0" step="0.01" placeholder="270,00"></div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Compte source (débit)</label><select class="fc" id="vir-source"></select></div>
+    <div class="fg"><label class="fl">Compte destination (crédit)</label><select class="fc" id="vir-dest"></select></div>
+  </div>
+  <div class="fg"><label class="fl">Note</label><input type="text" class="fc" id="vir-note" placeholder="ex: Dépôt CELI mensuel"></div>
+  <div style="display:flex;gap:8px;margin-top:1rem;justify-content:flex-end">
+    <button class="btn bg2" onclick="closeM('m-virement')">Annuler</button>
+    <button class="btn bp" onclick="saveVirementModal()">Enregistrer le virement</button>
+  </div>
+</div>
+</div>
+
 <!-- MODAL CONFIRM GÉNÉRIQUE -->
 <div class="modal-bg" id="m-confirm">
 <div class="modal" style="width:420px">
@@ -352,6 +412,13 @@ td input:focus,td select:focus{outline:none;border-color:var(--acc)}
     <div class="fg"><label class="fl">Type</label>
       <select class="fc" id="cp-type"><option>REER</option><option>CELI</option><option>REEE</option><option>Fonds d'urgence</option><option>Épargne ordinaire</option></select>
     </div>
+    <div class="fg"><label class="fl">Institution financière</label>
+      <select class="fc" id="cp-institution">
+        <option value="">— Aucune —</option>
+      </select>
+    </div>
+  </div>
+  <div class="fr">
     <div class="fg"><label class="fl">Couleur</label>
       <select class="fc" id="cp-color">
         <option value="#2d6a4f">Vert forêt</option><option value="#1a5276">Bleu marine</option>
@@ -541,6 +608,19 @@ const DEF={
     {id:3,name:'REEE — Enfants',type:'REEE',color:'#6c3483',solde:3100,objectif:25000},
     {id:4,name:"Fonds d'urgence",type:"Fonds d'urgence",color:'#b7791f',solde:2000,objectif:8000},
   ],
+  comptesBancaires:[
+    {id:1,nom:'Chèques joint',type:'Chèques',institution:'BNC',titulaire:'Joint',solde_initial:0,solde_actuel:0,limite_credit:0,actif:true},
+    {id:2,nom:'Visa — Adulte 1',type:'Crédit',institution:'BNC',titulaire:'Adulte 1',solde_initial:0,solde_actuel:0,limite_credit:5000,actif:true},
+    {id:3,nom:'Visa — Adulte 2',type:'Crédit',institution:'BNC',titulaire:'Adulte 2',solde_initial:0,solde_actuel:0,limite_credit:5000,actif:true},
+    {id:4,nom:'Chèques joint',type:'Chèques',institution:'Desjardins',titulaire:'Joint',solde_initial:0,solde_actuel:0,limite_credit:0,actif:true},
+    {id:5,nom:'Visa — Adulte 1',type:'Crédit',institution:'Desjardins',titulaire:'Adulte 1',solde_initial:0,solde_actuel:0,limite_credit:5000,actif:true},
+    {id:6,nom:'Visa — Adulte 2',type:'Crédit',institution:'Desjardins',titulaire:'Adulte 2',solde_initial:0,solde_actuel:0,limite_credit:5000,actif:true},
+    {id:7,nom:'Visa',type:'Crédit',institution:'CIBC',titulaire:'Joint',solde_initial:0,solde_actuel:0,limite_credit:5000,actif:true},
+    {id:8,nom:'Chèques joint',type:'Chèques',institution:'WealthSimple',titulaire:'Joint',solde_initial:0,solde_actuel:0,limite_credit:0,actif:true},
+    {id:9,nom:'Visa — Adulte 1',type:'Crédit',institution:'WealthSimple',titulaire:'Adulte 1',solde_initial:0,solde_actuel:0,limite_credit:5000,actif:true},
+    {id:10,nom:'Visa — Adulte 2',type:'Crédit',institution:'WealthSimple',titulaire:'Adulte 2',solde_initial:0,solde_actuel:0,limite_credit:5000,actif:true},
+  ],
+  virements:[],
   transactions:[],projets:[],rappels:[],nextId:200,
   settings:{
     foyer:{nom:'Ma famille',adulte1:'Adulte 1',adulte2:'Adulte 2',nbPersonnes:3},
@@ -601,7 +681,7 @@ let S=JSON.parse(JSON.stringify(DEF));
 // ─── CHARGEMENT DEPUIS SUPABASE ───────────────────────────────
 async function loadFromSupabase(foyerId){
   FOYER_ID=foyerId;
-  const [revenus,depFixes,depVar,depPonct,paiesReelles,comptes,transactions,txItems,projets,projDeps,cats,rappels,foyer]=await Promise.all([
+  const [revenus,depFixes,depVar,depPonct,paiesReelles,comptes,transactions,txItems,projets,projDeps,cats,rappels,foyer,comptesBancaires,virements]=await Promise.all([
     sbGet('revenus',`?foyer_id=eq.${foyerId}&order=sort_order`),
     sbGet('dep_fixes',`?foyer_id=eq.${foyerId}&order=sort_order`),
     sbGet('dep_var',`?foyer_id=eq.${foyerId}&order=sort_order`),
@@ -615,6 +695,8 @@ async function loadFromSupabase(foyerId){
     sbGet('categories',`?foyer_id=eq.${foyerId}&order=sort_order`),
     sbGet('rappels',`?foyer_id=eq.${foyerId}`),
     sbGet('foyer',`?id=eq.${foyerId}`),
+    sbGet('comptes_bancaires',`?foyer_id=eq.${foyerId}&order=sort_order`),
+    sbGet('virements',`?foyer_id=eq.${foyerId}&order=date.desc`),
   ]);
 
   const f=foyer[0]||{};
@@ -623,11 +705,11 @@ async function loadFromSupabase(foyerId){
   S.settings.tvq=f.tvq||0.09975;
 
   S.revenus=revenus.map(r=>({id:+r.id,name:r.name,amount:+r.amount,freq:r.freq,week:r.week,jour:r.jour||20,_persisted:true}));
-  S.depFixes=depFixes.map(d=>({id:+d.id,name:d.name,amount:+d.amount,week:d.week,_persisted:true}));
+  S.depFixes=depFixes.map(d=>({id:+d.id,name:d.name,amount:+d.amount,week:d.week,institution:d.institution||'',_persisted:true}));
   S.depVar=depVar.map(d=>({id:+d.id,name:d.name,amount:+d.amount,cat:d.cat,_persisted:true}));
   S.depPonct=depPonct.map(d=>({id:+d.id,name:d.name,amount:+d.amount,cat:d.cat,mois:d.mois||[],_persisted:true}));
   S.paiesReelles=paiesReelles.map(p=>({id:+p.id,revId:+p.rev_id,date:p.date,montant:+p.montant,note:p.note||'',_persisted:true}));
-  S.comptes=comptes.map(c=>({id:+c.id,name:c.name,type:c.type,color:c.color,solde:+c.solde,objectif:+c.objectif,_persisted:true}));
+  S.comptes=comptes.map(c=>({id:+c.id,name:c.name,type:c.type,color:c.color,solde:+c.solde,objectif:+c.objectif,institution:c.institution||'',_persisted:true}));
 
   // Transactions avec leurs items
   const itemsMap={};
@@ -638,7 +720,7 @@ async function loadFromSupabase(foyerId){
   S.transactions=transactions.map(t=>({
     id:+t.id,type:t.type,date:t.date,store:t.store,payment:t.payment,
     sub:+t.sub,tps:+t.tps,tvq:+t.tvq,tot:+t.tot,
-    montant:+t.montant,compteId:t.compte_id,
+    montant:+t.montant,compteId:t.compte_id,compteBancaireId:t.compte_bancaire_id||null,
     items:itemsMap[t.id]||[]
   }));
 
@@ -654,6 +736,17 @@ async function loadFromSupabase(foyerId){
     deps:depsMap[p.id]||[],_persisted:true
   }));
 
+  S.comptesBancaires=comptesBancaires.map(c=>({
+    id:+c.id,nom:c.nom,type:c.type,institution:c.institution||'',
+    titulaire:c.titulaire||'Joint',solde_initial:+c.solde_initial,
+    solde_actuel:+c.solde_actuel,limite_credit:+c.limite_credit,
+    actif:c.actif!==false,_persisted:true
+  }));
+  S.virements=virements.map(v=>({
+    id:+v.id,date:v.date,montant:+v.montant,
+    compteSourceId:+v.compte_source_id,compteDestId:+v.compte_dest_id,
+    note:v.note||'',_persisted:true
+  }));
   if(cats.length>0){
     S.settings.cats=cats.map(c=>({id:+c.id,name:c.name,icon:c.icon,color:c.color,_persisted:true}));
   }
@@ -697,7 +790,7 @@ async function saveRevenu(r){
   else await sbPatch('revenus',`?id=eq.${r.id}&foyer_id=eq.${FOYER_ID}`,payload);
 }
 async function saveDepFix(d){
-  const payload={foyer_id:FOYER_ID,name:d.name,amount:d.amount,week:d.week};
+  const payload={foyer_id:FOYER_ID,name:d.name,amount:d.amount,week:d.week,institution:d.institution||''};
   if(!d._persisted){const res=await sbPost('dep_fixes',payload);d.id=res[0].id;d._persisted=true;}
   else await sbPatch('dep_fixes',`?id=eq.${d.id}&foyer_id=eq.${FOYER_ID}`,payload);
 }
@@ -716,16 +809,16 @@ async function savePaieReelle(p){
   p.id=res[0].id;
 }
 async function saveCompte(c){
-  const payload={foyer_id:FOYER_ID,name:c.name,type:c.type,color:c.color,solde:c.solde,objectif:c.objectif};
+  const payload={foyer_id:FOYER_ID,name:c.name,type:c.type,color:c.color,solde:c.solde,objectif:c.objectif,institution:c.institution||''};
   if(!c._persisted){
     const res=await sbPost('comptes',payload);
     c.id=res[0].id;c._persisted=true;
   } else {
-    await sbPatch('comptes',`?id=eq.${c.id}&foyer_id=eq.${FOYER_ID}`,{name:c.name,type:c.type,color:c.color,solde:c.solde,objectif:c.objectif});
+    await sbPatch('comptes',`?id=eq.${c.id}&foyer_id=eq.${FOYER_ID}`,payload);
   }
 }
 async function saveTxnToSupa(t){
-  const body={foyer_id:FOYER_ID,type:t.type,date:t.date,store:t.store,payment:t.payment,sub:t.sub||0,tps:t.tps||0,tvq:t.tvq||0,tot:t.tot,montant:t.montant||0,compte_id:t.compteId||null};
+  const body={foyer_id:FOYER_ID,type:t.type,date:t.date,store:t.store,payment:t.payment||'',sub:t.sub||0,tps:t.tps||0,tvq:t.tvq||0,tot:t.tot,montant:t.montant||0,compte_id:t.compteId||null,compte_bancaire_id:t.compteBancaireId||null};
   const res=await sbPost('transactions',body);
   const txId=res[0].id;t.id=txId;
   if(t.items&&t.items.length>0){
@@ -740,6 +833,15 @@ async function saveProjetToSupa(p){
 async function saveProjetDep(dep,projId){
   const body={foyer_id:FOYER_ID,projet_id:projId,description:dep.desc,amt:dep.amt,tax:dep.tax,tot:dep.tot,date:dep.date};
   const res=await sbPost('projet_deps',body);dep.id=res[0].id;
+}
+async function saveCB(c){
+  const payload={foyer_id:FOYER_ID,nom:c.nom,type:c.type,institution:c.institution||'',titulaire:c.titulaire||'Joint',solde_initial:c.solde_initial||0,solde_actuel:c.solde_actuel||0,limite_credit:c.limite_credit||0,actif:c.actif!==false};
+  if(!c._persisted){const res=await sbPost('comptes_bancaires',payload);c.id=res[0].id;c._persisted=true;}
+  else await sbPatch('comptes_bancaires',`?id=eq.${c.id}&foyer_id=eq.${FOYER_ID}`,payload);
+}
+async function saveVirement(v){
+  const body={foyer_id:FOYER_ID,date:v.date,montant:v.montant,compte_source_id:v.compteSourceId||null,compte_dest_id:v.compteDestId||null,note:v.note||''};
+  const res=await sbPost('virements',body);v.id=res[0].id;v._persisted=true;
 }
 async function deleteRow(table,id){
   await sbDelete(table,`?id=eq.${id}`);
@@ -819,7 +921,7 @@ async function initDefaultData(foyerId){
   }
   for(let i=0;i<DEF.depFixes.length;i++){
     const d=DEF.depFixes[i];
-    await sbPost('dep_fixes',{foyer_id:foyerId,name:d.name,amount:d.amount,week:d.week,sort_order:i});
+    await sbPost('dep_fixes',{foyer_id:foyerId,name:d.name,amount:d.amount,week:d.week,institution:'',sort_order:i});
   }
   for(let i=0;i<DEF.depVar.length;i++){
     const d=DEF.depVar[i];
@@ -832,6 +934,10 @@ async function initDefaultData(foyerId){
   for(let i=0;i<DEF.comptes.length;i++){
     const c=DEF.comptes[i];
     await sbPost('comptes',{foyer_id:foyerId,name:c.name,type:c.type,color:c.color,solde:c.solde,objectif:c.objectif,sort_order:i});
+  }
+  for(let i=0;i<DEF.comptesBancaires.length;i++){
+    const c=DEF.comptesBancaires[i];
+    await sbPost('comptes_bancaires',{foyer_id:foyerId,nom:c.nom,type:c.type,institution:c.institution,titulaire:c.titulaire,solde_initial:0,solde_actuel:0,limite_credit:c.limite_credit||0,actif:true,sort_order:i});
   }
   for(let i=0;i<DEF.settings.cats.length;i++){
     const c=DEF.settings.cats[i];
@@ -863,7 +969,7 @@ async function initApp(){
 
 // ─── NAVIGATION ───────────────────────────────────────────────
 let page='dash';
-const PAGES=['dash','budget','epargnes','transactions','maison','flux','settings'];
+const PAGES=['dash','budget','comptes','epargnes','transactions','maison','flux','settings'];
 function go(p){
   page=p;
   document.querySelectorAll('.ni').forEach(el=>{
@@ -900,6 +1006,7 @@ function render(){
   const mt=document.getElementById('logo-title-mobile');if(mt)mt.textContent='💰 '+(S.settings.foyer.nom||'Ma famille');
   if(page==='dash')m.innerHTML=pgDash();
   else if(page==='budget')m.innerHTML=pgBudget();
+  else if(page==='comptes')m.innerHTML=pgComptes();
   else if(page==='epargnes')m.innerHTML=pgEpargnes();
   else if(page==='transactions')m.innerHTML=pgTxn();
   else if(page==='maison')m.innerHTML=pgMaison();
@@ -1191,10 +1298,14 @@ function pgBudget(){
   <div class="card">
     <div class="ch"><h2>Dépenses fixes (aux 2 semaines)</h2></div>
     <table>
-      <thead><tr><th>Poste</th><th>Semaine</th><th>Montant / 2 sem.</th><th>Mensuel réel</th><th></th></tr></thead>
+      <thead><tr><th>Poste</th><th>Institution</th><th>Semaine</th><th>Montant / 2 sem.</th><th>Mensuel réel</th><th></th></tr></thead>
       <tbody>
       ${S.depFixes.map(d=>`<tr>
         <td><input type="text" value="${d.name}" onchange="upd('depFixes',${d.id},'name',this.value)"></td>
+        <td><select onchange="upd('depFixes',${d.id},'institution',this.value)" style="min-width:110px">
+          <option value="">— Aucune —</option>
+          ${(S.settings.banques||[]).map(b=>`<option value="${b.nom}" ${d.institution===b.nom?'selected':''}>${b.nom}</option>`).join('')}
+        </select></td>
         <td><select onchange="upd('depFixes',${d.id},'week',parseInt(this.value))">
           <option value="1" ${d.week===1?'selected':''}>Sem. 1 & 3</option>
           <option value="2" ${d.week===2?'selected':''}>Sem. 2 & 4</option>
@@ -1282,6 +1393,115 @@ function pgBudget(){
   </div>`;
 }
 
+// ─── COMPTES BANCAIRES ────────────────────────────────────────
+function getCBLabel(id){
+  if(!id)return '—';
+  const c=S.comptesBancaires.find(x=>x.id===+id);
+  return c?`${c.institution} · ${c.nom}`:'—';
+}
+function populateCBSelect(selId,selectedId,includeAll=false){
+  const el=document.getElementById(selId);if(!el)return;
+  el.innerHTML=(includeAll?'<option value="">Tous les comptes</option>':'')+
+    S.comptesBancaires.filter(c=>c.actif).map(c=>`<option value="${c.id}" ${+c.id===+selectedId?'selected':''}>${c.institution} · ${c.nom} (${c.type})</option>`).join('');
+}
+function getSoldeReel(cb){
+  // Solde initial + toutes les transactions liées
+  const txns=S.transactions.filter(t=>+t.compteBancaireId===+cb.id);
+  const virSrc=S.virements.filter(v=>+v.compteSourceId===+cb.id);
+  const virDst=S.virements.filter(v=>+v.compteDestId===+cb.id);
+  const depenses=txns.filter(t=>t.type==='depense').reduce((s,t)=>s+t.tot,0);
+  const depots=txns.filter(t=>t.type==='epargne').reduce((s,t)=>s+t.montant,0);
+  const retraits=txns.filter(t=>t.type==='retrait').reduce((s,t)=>s+Math.abs(t.montant),0);
+  const sorties=virSrc.reduce((s,v)=>s+v.montant,0);
+  const entrees=virDst.reduce((s,v)=>s+v.montant,0);
+  return cb.solde_initial-depenses-depots+retraits-sorties+entrees;
+}
+function pgComptes(){
+  const INST_COLORS={BNC:'#e63946',Desjardins:'#52b788',CIBC:'#c77dff',WealthSimple:'#4cc9f0',Autre:'#7f8c8d'};
+  const byInst={};
+  S.comptesBancaires.filter(c=>c.actif).forEach(c=>{
+    if(!byInst[c.institution])byInst[c.institution]=[];
+    byInst[c.institution].push(c);
+  });
+  const totSoldes=S.comptesBancaires.filter(c=>c.actif&&c.type!=='Crédit').reduce((s,c)=>s+getSoldeReel(c),0);
+  const totCredit=S.comptesBancaires.filter(c=>c.actif&&c.type==='Crédit').reduce((s,c)=>s+getSoldeReel(c),0);
+
+  return`
+  <div class="pt">Comptes bancaires</div>
+  <div class="ps">Suivi de tous tes comptes — BNC · Desjardins · CIBC · WealthSimple</div>
+
+  <div class="mg4" style="margin-bottom:1.25rem">
+    <div class="mc"><div class="ml">Liquidités totales</div><div class="mv g">${fmt(totSoldes)}</div><div class="ms">comptes chèques + épargne</div></div>
+    <div class="mc"><div class="ml">Solde cartes crédit</div><div class="mv ${totCredit<0?'r':''}">${fmt(Math.abs(totCredit))}</div><div class="ms">${totCredit<0?'à payer':'crédit disponible'}</div></div>
+    <div class="mc"><div class="ml">Nb comptes actifs</div><div class="mv">${S.comptesBancaires.filter(c=>c.actif).length}</div><div class="ms">${Object.keys(byInst).length} institutions</div></div>
+    <div class="mc" style="display:flex;align-items:center;justify-content:space-between;flex-direction:row;gap:8px">
+      <div><div class="ml">Actions</div></div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="btn bp bs" onclick="openCBModal()">+ Compte</button>
+        <button class="btn bg2 bs" onclick="openVirementModal()">⇄ Virement</button>
+      </div>
+    </div>
+  </div>
+
+  ${Object.entries(byInst).map(([inst,cbs])=>{
+    const col=INST_COLORS[inst]||'#7f8c8d';
+    return`<div class="card" style="border-left:4px solid ${col};margin-bottom:1rem">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem">
+        <div style="width:12px;height:12px;border-radius:50%;background:${col}"></div>
+        <h2 style="font-size:16px">${inst}</h2>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">
+        ${cbs.map(c=>{
+          const solde=getSoldeReel(c);
+          const isCredit=c.type==='Crédit';
+          const utilisation=isCredit&&c.limite_credit>0?Math.round(Math.abs(Math.min(solde,0))/c.limite_credit*100):0;
+          const txnsCB=S.transactions.filter(t=>+t.compteBancaireId===+c.id).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3);
+          return`<div style="background:var(--bg);border-radius:var(--r);padding:12px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+              <div>
+                <div style="font-weight:500;font-size:13px">${c.nom}</div>
+                <div style="font-size:11px;color:var(--mut)">${c.type} · ${c.titulaire}</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-family:'DM Mono',monospace;font-weight:600;font-size:15px;color:${solde<0?'var(--dan)':'var(--txt)'}">${fmt(solde)}</div>
+                ${isCredit&&c.limite_credit>0?`<div style="font-size:11px;color:var(--mut)">/ ${fmt(c.limite_credit)}</div>`:''}
+              </div>
+            </div>
+            ${isCredit&&c.limite_credit>0?`
+              <div class="pw" style="height:5px;margin-bottom:8px">
+                <div class="pb" style="width:${utilisation}%;background:${utilisation>80?'var(--dan)':'var(--acc)'}"></div>
+              </div>`:''}
+            ${txnsCB.length>0?`<div style="font-size:11px;color:var(--mut);margin-bottom:4px">Récentes :</div>
+              ${txnsCB.map(t=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;border-bottom:1px solid var(--bdr)">
+                <span style="color:var(--mut)">${t.date.slice(5)} ${t.store||'—'}</span>
+                <span style="font-family:'DM Mono',monospace;color:${t.type==='epargne'?'var(--pur)':t.type==='retrait'?'var(--dan)':'var(--txt)'}">${t.type==='epargne'?'+':'-'}${fmt(t.tot)}</span>
+              </div>`).join('')}`:'<div style="font-size:11px;color:var(--mut);font-style:italic">Aucune transaction</div>'}
+            <div style="display:flex;gap:5px;margin-top:8px">
+              <button class="btn bg2 bs" style="flex:1;font-size:11px" onclick="openCBModal(${c.id})">Modifier</button>
+              <button class="btn bg2 bs" style="flex:1;font-size:11px;color:var(--dan);border-color:var(--dan)" onclick="delCB(${c.id})">Supprimer</button>
+            </div>
+          </div>`;}).join('')}
+      </div>
+    </div>`;}).join('')}
+
+  ${S.virements.length>0?`<div class="card">
+    <div class="ch"><h2>Virements récents</h2></div>
+    <table style="font-size:13px">
+      <thead><tr><th>Date</th><th>Source</th><th>Destination</th><th>Montant</th><th>Note</th><th></th></tr></thead>
+      <tbody>
+      ${[...S.virements].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10).map(v=>`<tr>
+        <td class="mono">${v.date}</td>
+        <td>${getCBLabel(v.compteSourceId)}</td>
+        <td>${getCBLabel(v.compteDestId)}</td>
+        <td class="mono" style="font-weight:600">${fmt(v.montant)}</td>
+        <td style="color:var(--mut)">${v.note||'—'}</td>
+        <td><button class="del" onclick="delVirement(${v.id})">✕</button></td>
+      </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`:''}`;
+}
+
 // ─── ÉPARGNES ─────────────────────────────────────────────────
 function pgEpargnes(){
   const totSoldes=totEpSolde();
@@ -1325,7 +1545,7 @@ function pgEpargnes(){
       <div class="compte-header">
         <div style="display:flex;align-items:center;gap:10px">
           <div style="width:12px;height:12px;border-radius:50%;background:${c.color}"></div>
-          <div><div style="font-weight:600;font-size:15px">${c.name}</div><div style="font-size:12px;color:var(--mut)">${c.type}</div></div>
+          <div><div style="font-weight:600;font-size:15px">${c.name}</div><div style="font-size:12px;color:var(--mut)">${c.type}${c.institution?` · <span style="color:var(--inf)">${c.institution}</span>`:''}</div></div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div style="text-align:right">
@@ -2020,7 +2240,6 @@ function openTxn(){
   tItems=[{id:1,name:'',cat:S.settings.cats[0]?.name||'Alimentation',price:0,tax:'tpstvq',tot:0}];
   document.getElementById('t-date').value=today();
   document.getElementById('t-store').value='';
-  document.getElementById('t-pay').value='Débit';
   document.getElementById('t-type').value='depense';
   document.getElementById('ep-section').style.display='none';
   document.getElementById('dep-section').style.display='block';
@@ -2033,6 +2252,105 @@ function openTxnForCompte(cid,type='epargne'){
   document.getElementById('t-type').value=type;
   toggleEpSection();
   populateCompteSelect('t-compte',cid);
+}
+
+function openTxn(){
+  tItems=[{id:1,name:'',cat:S.settings.cats[0]?.name||'Alimentation',price:0,tax:'tpstvq',tot:0}];
+  document.getElementById('t-date').value=today();
+  document.getElementById('t-store').value='';
+  document.getElementById('t-type').value='depense';
+  document.getElementById('ep-section').style.display='none';
+  document.getElementById('dep-section').style.display='block';
+  populateCompteSelect('t-compte');
+  populateCBSelect('t-cb-source');
+  renderTItems();
+  document.getElementById('m-txn').classList.add('open');
+}
+function openTxnForCompte(cid,type='epargne'){
+  openTxn();
+  document.getElementById('t-type').value=type;
+  toggleEpSection();
+  populateCompteSelect('t-compte',cid);
+}
+
+// ─── MODAL COMPTE BANCAIRE ────────────────────────────────────
+let editCBId=null;
+function openCBModal(id){
+  editCBId=id||null;
+  const c=id?S.comptesBancaires.find(x=>x.id===+id):null;
+  document.getElementById('mcb-title').textContent=id?'Modifier le compte':'Nouveau compte bancaire';
+  document.getElementById('cb-id').value=id||'';
+  document.getElementById('cb-nom').value=c?.nom||'';
+  document.getElementById('cb-type').value=c?.type||'Chèques';
+  document.getElementById('cb-institution').value=c?.institution||'BNC';
+  document.getElementById('cb-titulaire').value=c?.titulaire||'Joint';
+  document.getElementById('cb-solde').value=c?.solde_initial||'';
+  document.getElementById('cb-limite').value=c?.limite_credit||'';
+  document.getElementById('m-cb').classList.add('open');
+}
+function saveCBModal(){
+  const nom=document.getElementById('cb-nom').value.trim();if(!nom)return;
+  const existing=editCBId?S.comptesBancaires.find(x=>x.id===+editCBId):null;
+  const obj={
+    id:editCBId||uid(),nom,
+    type:document.getElementById('cb-type').value,
+    institution:document.getElementById('cb-institution').value,
+    titulaire:document.getElementById('cb-titulaire').value,
+    solde_initial:parseFloat(document.getElementById('cb-solde').value)||0,
+    solde_actuel:parseFloat(document.getElementById('cb-solde').value)||0,
+    limite_credit:parseFloat(document.getElementById('cb-limite').value)||0,
+    actif:true,_persisted:existing?existing._persisted:false
+  };
+  if(editCBId){const i=S.comptesBancaires.findIndex(x=>x.id===+editCBId);if(i>=0)S.comptesBancaires[i]=obj;}
+  else S.comptesBancaires.push(obj);
+  queueSave(async()=>await saveCB(obj));
+  save();closeM('m-cb');render();
+}
+function delCB(id){
+  customConfirm('Supprimer le compte','Supprimer ce compte bancaire ?',()=>{
+    S.comptesBancaires=S.comptesBancaires.filter(x=>x.id!==+id);
+    queueSave(async()=>await deleteRow('comptes_bancaires',id));
+    save();render();
+  });
+}
+
+// ─── MODAL VIREMENT ───────────────────────────────────────────
+function openVirementModal(){
+  document.getElementById('vir-date').value=today();
+  document.getElementById('vir-montant').value='';
+  document.getElementById('vir-note').value='';
+  populateCBSelect('vir-source');
+  populateCBSelect('vir-dest');
+  document.getElementById('m-virement').classList.add('open');
+}
+function saveVirementModal(){
+  const date=document.getElementById('vir-date').value;if(!date)return;
+  const montant=parseFloat(document.getElementById('vir-montant').value)||0;if(montant<=0)return;
+  const srcId=parseInt(document.getElementById('vir-source').value);
+  const dstId=parseInt(document.getElementById('vir-dest').value);
+  if(srcId===dstId){alert('Le compte source et destination doivent être différents.');return;}
+  const note=document.getElementById('vir-note').value.trim();
+  const v={id:uid(),date,montant,compteSourceId:srcId,compteDestId:dstId,note,_persisted:false};
+  S.virements.unshift(v);
+  // Mettre à jour les soldes
+  const src=S.comptesBancaires.find(x=>x.id===srcId);
+  const dst=S.comptesBancaires.find(x=>x.id===dstId);
+  if(src){src.solde_actuel-=montant;queueSave(async()=>await saveCB(src));}
+  if(dst){dst.solde_actuel+=montant;queueSave(async()=>await saveCB(dst));}
+  queueSave(async()=>await saveVirement(v));
+  save();closeM('m-virement');render();
+}
+function delVirement(id){
+  const v=S.virements.find(x=>x.id===+id);if(!v)return;
+  customConfirm('Supprimer le virement','Annuler ce virement ? Les soldes seront ajustés.',()=>{
+    const src=S.comptesBancaires.find(x=>x.id===+v.compteSourceId);
+    const dst=S.comptesBancaires.find(x=>x.id===+v.compteDestId);
+    if(src){src.solde_actuel+=v.montant;queueSave(async()=>await saveCB(src));}
+    if(dst){dst.solde_actuel-=v.montant;queueSave(async()=>await saveCB(dst));}
+    S.virements=S.virements.filter(x=>x.id!==+id);
+    queueSave(async()=>await deleteRow('virements',id));
+    save();render();
+  });
 }
 
 // ── #6 ARTICLES — affichage en cartes pour plus d'ergonomie ──
@@ -2096,46 +2414,61 @@ function calcTSum(){
 function saveTxn(){
   const date=document.getElementById('t-date').value;if(!date)return;
   const store=document.getElementById('t-store').value.trim()||'Sans nom';
-  const payment=document.getElementById('t-pay').value;
+  const cbId=parseInt(document.getElementById('t-cb-source').value)||null;
   const sub=tItems.reduce((s,i)=>s+i.price,0);
   const tps=tItems.reduce((s,i)=>s+(i.tax!=='aucune'?i.price*(S.settings.tps||0.05):0),0);
   const tvq=tItems.reduce((s,i)=>s+(i.tax==='tpstvq'?i.price*(S.settings.tvq||0.09975):0),0);
-  const t={id:uid(),type:'depense',date,store,payment,items:tItems.map(i=>{const tx=calcTax(i.price,i.tax);return{...i,tot:tx.tot};}),sub,tps,tvq,tot:sub+tps+tvq};
+  const t={id:uid(),type:'depense',date,store,payment:'',compteBancaireId:cbId,items:tItems.map(i=>{const tx=calcTax(i.price,i.tax);return{...i,tot:tx.tot};}),sub,tps,tvq,tot:sub+tps+tvq};
   S.transactions.unshift(t);
+  // Débiter le compte bancaire
+  if(cbId){const cb=S.comptesBancaires.find(x=>x.id===cbId);if(cb){cb.solde_actuel-=t.tot;queueSave(async()=>await saveCB(cb));}}
   queueSave(async()=>await saveTxnToSupa(t));
   save();closeM('m-txn');render();
 }
 function saveTxnEp(){
-  const type=document.getElementById('t-type').value; // 'epargne' ou 'retrait'
+  const type=document.getElementById('t-type').value;
   const date=document.getElementById('t-date').value;if(!date)return;
   const store=document.getElementById('t-store').value.trim()||(type==='retrait'?'Retrait':'Dépôt');
-  const payment=document.getElementById('t-pay').value;
+  const cbId=parseInt(document.getElementById('t-cb-source').value)||null;
   const compteId=parseInt(document.getElementById('t-compte').value);
   const montant=parseFloat(document.getElementById('t-ep-amt').value)||0;
   if(!compteId||montant<=0)return;
   const signedMontant=type==='retrait'?-montant:montant;
-  const t={id:uid(),type,date,store,payment,compteId,montant:signedMontant,tot:Math.abs(signedMontant),items:[]};
+  const t={id:uid(),type,date,store,payment:'',compteBancaireId:cbId,compteId,montant:signedMontant,tot:Math.abs(signedMontant),items:[]};
   S.transactions.unshift(t);
+  // Mettre à jour compte épargne
   const c=S.comptes.find(x=>x.id===compteId);
-  if(c){
-    c.solde=Math.max(0,c.solde+signedMontant);
-    queueSave(async()=>await saveCompte(c));
+  if(c){c.solde=Math.max(0,c.solde+signedMontant);queueSave(async()=>await saveCompte(c));}
+  // Mettre à jour compte bancaire source
+  if(cbId){
+    const cb=S.comptesBancaires.find(x=>x.id===cbId);
+    if(cb){
+      cb.solde_actuel+=type==='retrait'?montant:-montant;
+      queueSave(async()=>await saveCB(cb));
+    }
   }
   queueSave(async()=>await saveTxnToSupa(t));
   save();closeM('m-txn');render();
 }
 function delTxn(id){
-  const t=S.transactions.find(x=>x.id===id);if(!t)return;
+  const t=S.transactions.find(x=>x.id===+id);if(!t)return;
   customConfirm('Supprimer la transaction','Supprimer définitivement cette transaction ?',async()=>{
+    // Reverser l'effet sur le compte épargne
     if(t.type==='epargne'||t.type==='retrait'){
       const c=S.comptes.find(x=>x.id===t.compteId);
-      if(c){
-        // Inverser l'effet : retrait positif → soustrait, dépôt → soustrait
-        c.solde=Math.max(0,c.solde-t.montant);
-        queueSave(async()=>await saveCompte(c));
+      if(c){c.solde=Math.max(0,c.solde-t.montant);queueSave(async()=>await saveCompte(c));}
+    }
+    // Reverser l'effet sur le compte bancaire
+    if(t.compteBancaireId){
+      const cb=S.comptesBancaires.find(x=>x.id===+t.compteBancaireId);
+      if(cb){
+        if(t.type==='depense')cb.solde_actuel+=t.tot;
+        else if(t.type==='epargne')cb.solde_actuel+=t.montant;
+        else if(t.type==='retrait')cb.solde_actuel-=Math.abs(t.montant);
+        queueSave(async()=>await saveCB(cb));
       }
     }
-    S.transactions=S.transactions.filter(x=>x.id!==id);
+    S.transactions=S.transactions.filter(x=>x.id!==+id);
     queueSave(async()=>await deleteRow('transactions',id));
     save();render();
   });
@@ -2152,6 +2485,9 @@ function openCompte(id){
   document.getElementById('cp-color').value=c?.color||'#2d6a4f';
   document.getElementById('cp-solde').value=c?.solde||'';
   document.getElementById('cp-obj').value=c?.objectif||'';
+  const sel=document.getElementById('cp-institution');
+  sel.innerHTML='<option value="">— Aucune —</option>'+
+    (S.settings.banques||[]).map(b=>`<option value="${b.nom}" ${c?.institution===b.nom?'selected':''}>${b.nom} (${b.type})</option>`).join('');
   document.getElementById('m-compte').classList.add('open');
 }
 function saveCompteModal(){
@@ -2164,6 +2500,7 @@ function saveCompteModal(){
     color:document.getElementById('cp-color').value,
     solde:parseFloat(document.getElementById('cp-solde').value)||0,
     objectif:parseFloat(document.getElementById('cp-obj').value)||0,
+    institution:document.getElementById('cp-institution').value||'',
     _persisted:existing?existing._persisted:false
   };
   if(editCId){const i=S.comptes.findIndex(x=>x.id===editCId);if(i>=0)S.comptes[i]=obj;}
