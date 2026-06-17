@@ -222,7 +222,16 @@ td input:focus,td select:focus{outline:none;border-color:var(--acc)}
   <div class="mh"><h2>Nouvelle transaction</h2><button class="mx" onclick="closeM('m-txn')">✕</button></div>
   <div class="fr">
     <div class="fg"><label class="fl">Date</label><input type="date" class="fc" id="t-date"></div>
-    <div class="fg"><label class="fl">Magasin / Description</label><input type="text" class="fc" id="t-store" placeholder="ex: IGA Contrecoeur"></div>
+    <div class="fg" style="position:relative">
+      <label class="fl">Magasin / Description</label>
+      <input type="text" class="fc" id="t-store" placeholder="ex: IGA Contrecoeur"
+        autocomplete="off"
+        oninput="acStore(this.value)"
+        onkeydown="acKey(event,'ac-store')"
+        onfocus="acStore(this.value)"
+        onblur="setTimeout(()=>hideAc('ac-store'),200)">
+      <div id="ac-store" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);z-index:500;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+    </div>
   </div>
   <div class="fr">
     <div class="fg"><label class="fl">Compte bancaire utilisé</label>
@@ -2245,23 +2254,92 @@ function toggleEpSection(){
 function populateCompteSelect(selId,selectedId){
   document.getElementById(selId).innerHTML=S.comptes.map(c=>`<option value="${c.id}" ${c.id===selectedId?'selected':''}>${c.name} (${c.type})</option>`).join('');
 }
-function openTxn(){
-  tItems=[{id:1,name:'',cat:S.settings.cats[0]?.name||'Alimentation',price:0,tax:'tpstvq',tot:0}];
-  document.getElementById('t-date').value=today();
-  document.getElementById('t-store').value='';
-  document.getElementById('t-type').value='depense';
-  document.getElementById('ep-section').style.display='none';
-  document.getElementById('dep-section').style.display='block';
-  populateCompteSelect('t-compte');
+// ─── AUTOCOMPLETE ─────────────────────────────────────────────
+function getStoreHistory(){
+  const seen=new Set();
+  return S.transactions.filter(t=>t.store&&t.type==='depense').map(t=>t.store).filter(s=>{if(seen.has(s))return false;seen.add(s);return true;});
+}
+function getItemHistory(){
+  // Retourne {name, cat, count} trié par fréquence
+  const map={};
+  S.transactions.forEach(t=>(t.items||[]).forEach(i=>{
+    if(!i.name)return;
+    const key=i.name.toLowerCase();
+    if(!map[key])map[key]={name:i.name,cats:{},count:0};
+    map[key].count++;
+    if(i.cat)map[key].cats[i.cat]=(map[key].cats[i.cat]||0)+1;
+  }));
+  return Object.values(map).sort((a,b)=>b.count-a.count);
+}
+function acStore(val){
+  const el=document.getElementById('ac-store');if(!el)return;
+  const v=val.trim().toLowerCase();
+  const stores=getStoreHistory();
+  const matches=v?stores.filter(s=>s.toLowerCase().includes(v)):stores.slice(0,8);
+  if(matches.length===0){el.style.display='none';return;}
+  el.innerHTML=matches.slice(0,8).map(s=>`
+    <div onclick="selectStore('${s.replace(/'/g,"\\'")}');hideAc('ac-store')"
+      style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--bdr)"
+      onmousedown="event.preventDefault()"
+      onmouseover="this.style.background='var(--bg)'"
+      onmouseout="this.style.background=''">
+      🏪 ${s}
+    </div>`).join('');
+  el.style.display='block';
+}
+function selectStore(val){
+  document.getElementById('t-store').value=val;
+  hideAc('ac-store');
+}
+function acItem(val,itemId){
+  const elId=`ac-item-${itemId}`;
+  const el=document.getElementById(elId);if(!el)return;
+  // Met à jour le nom en mémoire
+  const it=tItems.find(x=>x.id===itemId);
+  if(it)it.name=val;
+  const v=val.trim().toLowerCase();
+  const items=getItemHistory();
+  const matches=v?items.filter(i=>i.name.toLowerCase().includes(v)):items.slice(0,8);
+  if(matches.length===0){el.style.display='none';return;}
+  el.innerHTML=matches.slice(0,8).map(item=>{
+    const cats=Object.entries(item.cats).sort((a,b)=>b[1]-a[1]);
+    const bestCat=cats.length===1?cats[0][0]:'';
+    const catLabel=cats.length===1?`<span style="color:var(--acc);font-size:11px">→ ${bestCat}</span>`:
+      `<span style="color:var(--mut);font-size:11px">${cats.map(c=>c[0]).join(', ')}</span>`;
+    return`<div onclick="selectItem(${itemId},'${item.name.replace(/'/g,"\\'")}','${bestCat.replace(/'/g,"\\'")}',${JSON.stringify(cats).replace(/"/g,'&quot;')})"
+      onmousedown="event.preventDefault()"
+      onmouseover="this.style.background='var(--bg)'"
+      onmouseout="this.style.background=''"
+      style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center">
+      <span>📦 ${item.name}</span>${catLabel}
+    </div>`;}).join('');
+  el.style.display='block';
+}
+function selectItem(itemId,name,bestCat,catsArr){
+  const it=tItems.find(x=>x.id===itemId);if(!it)return;
+  it.name=name;
+  // Si une seule catégorie connue, l'appliquer automatiquement
+  if(bestCat&&bestCat!==''){
+    it.cat=bestCat;
+  } else if(catsArr&&catsArr.length>0){
+    // Plusieurs catégories — garder celle déjà sélectionnée ou prendre la plus fréquente
+    it.cat=catsArr[0][0];
+  }
+  hideAc(`ac-item-${itemId}`);
   renderTItems();
-  document.getElementById('m-txn').classList.add('open');
 }
-function openTxnForCompte(cid,type='epargne'){
-  openTxn();
-  document.getElementById('t-type').value=type;
-  toggleEpSection();
-  populateCompteSelect('t-compte',cid);
+function hideAc(id){const el=document.getElementById(id);if(el)el.style.display='none';}
+function acKey(e,dropId){
+  if(e.key==='Escape')hideAc(dropId);
+  if(e.key==='Enter'){
+    const el=document.getElementById(dropId);
+    if(el&&el.style.display!=='none'){const first=el.querySelector('div');if(first){first.click();e.preventDefault();}}
+  }
 }
+// Fermer tous les AC au clic en dehors
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#t-store')&&!e.target.closest('#ac-store'))hideAc('ac-store');
+});
 
 function openTxn(){
   tItems=[{id:1,name:'',cat:S.settings.cats[0]?.name||'Alimentation',price:0,tax:'tpstvq',tot:0}];
@@ -2376,10 +2454,17 @@ function renderTItems(){
     <div style="border:1px solid var(--bdr);border-radius:var(--r);padding:10px;margin-bottom:8px;background:var(--bg)">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
         <div>
-          <div style="font-size:11px;font-weight:500;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Article</div>
-          <input type="text" value="${i.name}" placeholder="ex: Lait 2L"
-            oninput="tItems.find(x=>x.id==${i.id}).name=this.value"
-            style="width:100%;border:1px solid var(--bdr);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:13px;background:var(--sur);color:var(--txt)">
+        <div style="grid-column:1/-1;position:relative">
+        <div style="font-size:11px;font-weight:500;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Article</div>
+        <input type="text" value="${i.name}" placeholder="ex: Lait 2L"
+          autocomplete="off"
+          oninput="acItem(this.value,${i.id})"
+          onkeydown="acKey(event,'ac-item-${i.id}')"
+          onfocus="acItem(this.value,${i.id})"
+          onblur="setTimeout(()=>hideAc('ac-item-${i.id}'),200)"
+          style="width:100%;border:1px solid var(--bdr);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:13px;background:var(--sur);color:var(--txt)">
+        <div id="ac-item-${i.id}" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);z-index:500;max-height:160px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+      </div>
         </div>
         <div>
           <div style="font-size:11px;font-weight:500;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Catégorie</div>
