@@ -662,28 +662,23 @@ const SUPA_URL='https://rzxmtoksvfglxbdnsaxz.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6eG10b2tzdmZnbHhiZG5zYXh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MTA5MjMsImV4cCI6MjA5NzA4NjkyM30.lRuBX--VlOEy122nXsjAz7GLk0CH_PzbDAjGfTGMF44';
 const SB_HEADERS={'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Prefer':'return=representation'};
 
-function getHeaders(extra={}){
-  const h={...SB_HEADERS,...extra};
-  if(FOYER_ID)h['x-set-config']='app.foyer_id='+FOYER_ID;
-  return h;
-}
 async function sbGet(table,query=''){
-  const r=await fetch(`${SUPA_URL}/rest/v1/${table}${query}`,{headers:getHeaders({'Prefer':''})});
+  const r=await fetch(`${SUPA_URL}/rest/v1/${table}${query}`,{headers:{...SB_HEADERS,'Prefer':''}});
   if(!r.ok)throw new Error(await r.text());
   return r.json();
 }
 async function sbPost(table,body){
-  const r=await fetch(`${SUPA_URL}/rest/v1/${table}`,{method:'POST',headers:getHeaders(),body:JSON.stringify(body)});
+  const r=await fetch(`${SUPA_URL}/rest/v1/${table}`,{method:'POST',headers:SB_HEADERS,body:JSON.stringify(body)});
   if(!r.ok)throw new Error(await r.text());
   return r.json();
 }
 async function sbPatch(table,query,body){
-  const r=await fetch(`${SUPA_URL}/rest/v1/${table}${query}`,{method:'PATCH',headers:getHeaders(),body:JSON.stringify(body)});
+  const r=await fetch(`${SUPA_URL}/rest/v1/${table}${query}`,{method:'PATCH',headers:SB_HEADERS,body:JSON.stringify(body)});
   if(!r.ok)throw new Error(await r.text());
   return r.json();
 }
 async function sbDelete(table,query){
-  const r=await fetch(`${SUPA_URL}/rest/v1/${table}${query}`,{method:'DELETE',headers:getHeaders({'Prefer':''})});
+  const r=await fetch(`${SUPA_URL}/rest/v1/${table}${query}`,{method:'DELETE',headers:{...SB_HEADERS,'Prefer':''}});
   if(!r.ok)throw new Error(await r.text());
 }
 
