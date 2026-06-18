@@ -662,23 +662,28 @@ const SUPA_URL='https://rzxmtoksvfglxbdnsaxz.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6eG10b2tzdmZnbHhiZG5zYXh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MTA5MjMsImV4cCI6MjA5NzA4NjkyM30.lRuBX--VlOEy122nXsjAz7GLk0CH_PzbDAjGfTGMF44';
 const SB_HEADERS={'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Prefer':'return=representation'};
 
+function getHeaders(extra={}){
+  const h={...SB_HEADERS,...extra};
+  if(FOYER_ID)h['x-set-config']='app.foyer_id='+FOYER_ID;
+  return h;
+}
 async function sbGet(table,query=''){
-  const r=await fetch(`${SUPA_URL}/rest/v1/${table}${query}`,{headers:{...SB_HEADERS,'Prefer':''}});
+  const r=await fetch(`${SUPA_URL}/rest/v1/${table}${query}`,{headers:getHeaders({'Prefer':''})});
   if(!r.ok)throw new Error(await r.text());
   return r.json();
 }
 async function sbPost(table,body){
-  const r=await fetch(`${SUPA_URL}/rest/v1/${table}`,{method:'POST',headers:SB_HEADERS,body:JSON.stringify(body)});
+  const r=await fetch(`${SUPA_URL}/rest/v1/${table}`,{method:'POST',headers:getHeaders(),body:JSON.stringify(body)});
   if(!r.ok)throw new Error(await r.text());
   return r.json();
 }
 async function sbPatch(table,query,body){
-  const r=await fetch(`${SUPA_URL}/rest/v1/${table}${query}`,{method:'PATCH',headers:SB_HEADERS,body:JSON.stringify(body)});
+  const r=await fetch(`${SUPA_URL}/rest/v1/${table}${query}`,{method:'PATCH',headers:getHeaders(),body:JSON.stringify(body)});
   if(!r.ok)throw new Error(await r.text());
   return r.json();
 }
 async function sbDelete(table,query){
-  const r=await fetch(`${SUPA_URL}/rest/v1/${table}${query}`,{method:'DELETE',headers:{...SB_HEADERS,'Prefer':''}});
+  const r=await fetch(`${SUPA_URL}/rest/v1/${table}${query}`,{method:'DELETE',headers:getHeaders({'Prefer':''})});
   if(!r.ok)throw new Error(await r.text());
 }
 
@@ -1413,16 +1418,21 @@ function populateCBSelect(selId,selectedId,includeAll=false){
     S.comptesBancaires.filter(c=>c.actif).map(c=>`<option value="${c.id}" ${+c.id===+selectedId?'selected':''}>${c.institution} · ${c.nom} (${c.type})</option>`).join('');
 }
 function getSoldeReel(cb){
-  // Solde initial + toutes les transactions liées
   const txns=S.transactions.filter(t=>+t.compteBancaireId===+cb.id);
   const virSrc=S.virements.filter(v=>+v.compteSourceId===+cb.id);
   const virDst=S.virements.filter(v=>+v.compteDestId===+cb.id);
+  // Dépenses ordinaires débitent le compte
   const depenses=txns.filter(t=>t.type==='depense').reduce((s,t)=>s+t.tot,0);
-  const depots=txns.filter(t=>t.type==='epargne').reduce((s,t)=>s+t.montant,0);
+  // Dépôts épargne débitent le compte (argent qui part vers REER/CELI...)
+  const depots=txns.filter(t=>t.type==='epargne').reduce((s,t)=>s+Math.abs(t.montant),0);
+  // Retraits épargne créditent le compte (argent qui revient)
   const retraits=txns.filter(t=>t.type==='retrait').reduce((s,t)=>s+Math.abs(t.montant),0);
+  // Virements sortants débitent, entrants créditent
   const sorties=virSrc.reduce((s,v)=>s+v.montant,0);
   const entrees=virDst.reduce((s,v)=>s+v.montant,0);
-  return cb.solde_initial-depenses-depots+retraits-sorties+entrees;
+  // Paies reçues créditent le compte
+  const paies=S.paiesReelles.filter(p=>+p.compteBancaireId===+cb.id).reduce((s,p)=>s+p.montant,0);
+  return cb.solde_initial - depenses - depots + retraits - sorties + entrees + paies;
 }
 function pgComptes(){
   const INST_COLORS={BNC:'#e63946',Desjardins:'#52b788',CIBC:'#c77dff',WealthSimple:'#4cc9f0',Autre:'#7f8c8d'};
@@ -2135,11 +2145,6 @@ function savePaie(){
   const cbId=parseInt(document.getElementById('paie-cb').value)||null;
   const p={id:uid(),revId,date,montant,note,compteBancaireId:cbId};
   S.paiesReelles.push(p);
-  // Créditer le compte bancaire
-  if(cbId){
-    const cb=S.comptesBancaires.find(x=>x.id===cbId);
-    if(cb){cb.solde_actuel+=montant;queueSave(async()=>await saveCB(cb));}
-  }
   queueSave(async()=>await savePaieReelle(p));
   save();closeM('m-paie');render();
 }
@@ -2426,21 +2431,12 @@ function saveVirementModal(){
   const note=document.getElementById('vir-note').value.trim();
   const v={id:uid(),date,montant,compteSourceId:srcId,compteDestId:dstId,note,_persisted:false};
   S.virements.unshift(v);
-  // Mettre à jour les soldes
-  const src=S.comptesBancaires.find(x=>x.id===srcId);
-  const dst=S.comptesBancaires.find(x=>x.id===dstId);
-  if(src){src.solde_actuel-=montant;queueSave(async()=>await saveCB(src));}
-  if(dst){dst.solde_actuel+=montant;queueSave(async()=>await saveCB(dst));}
   queueSave(async()=>await saveVirement(v));
   save();closeM('m-virement');render();
 }
 function delVirement(id){
   const v=S.virements.find(x=>x.id===+id);if(!v)return;
-  customConfirm('Supprimer le virement','Annuler ce virement ? Les soldes seront ajustés.',()=>{
-    const src=S.comptesBancaires.find(x=>x.id===+v.compteSourceId);
-    const dst=S.comptesBancaires.find(x=>x.id===+v.compteDestId);
-    if(src){src.solde_actuel+=v.montant;queueSave(async()=>await saveCB(src));}
-    if(dst){dst.solde_actuel-=v.montant;queueSave(async()=>await saveCB(dst));}
+  customConfirm('Supprimer le virement','Annuler ce virement ?',()=>{
     S.virements=S.virements.filter(x=>x.id!==+id);
     queueSave(async()=>await deleteRow('virements',id));
     save();render();
@@ -2521,8 +2517,6 @@ function saveTxn(){
   const tvq=tItems.reduce((s,i)=>s+(i.tax==='tpstvq'?i.price*(S.settings.tvq||0.09975):0),0);
   const t={id:uid(),type:'depense',date,store,payment:'',compteBancaireId:cbId,items:tItems.map(i=>{const tx=calcTax(i.price,i.tax);return{...i,tot:tx.tot};}),sub,tps,tvq,tot:sub+tps+tvq};
   S.transactions.unshift(t);
-  // Débiter le compte bancaire
-  if(cbId){const cb=S.comptesBancaires.find(x=>x.id===cbId);if(cb){cb.solde_actuel-=t.tot;queueSave(async()=>await saveCB(cb));}}
   queueSave(async()=>await saveTxnToSupa(t));
   save();closeM('m-txn');render();
 }
@@ -2537,17 +2531,9 @@ function saveTxnEp(){
   const signedMontant=type==='retrait'?-montant:montant;
   const t={id:uid(),type,date,store,payment:'',compteBancaireId:cbId,compteId,montant:signedMontant,tot:Math.abs(signedMontant),items:[]};
   S.transactions.unshift(t);
-  // Mettre à jour compte épargne
+  // Mettre à jour compte épargne (REER/CELI...)
   const c=S.comptes.find(x=>x.id===compteId);
   if(c){c.solde=Math.max(0,c.solde+signedMontant);queueSave(async()=>await saveCompte(c));}
-  // Mettre à jour compte bancaire source
-  if(cbId){
-    const cb=S.comptesBancaires.find(x=>x.id===cbId);
-    if(cb){
-      cb.solde_actuel+=type==='retrait'?montant:-montant;
-      queueSave(async()=>await saveCB(cb));
-    }
-  }
   queueSave(async()=>await saveTxnToSupa(t));
   save();closeM('m-txn');render();
 }
