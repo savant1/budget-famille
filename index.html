@@ -377,6 +377,42 @@ td input:focus,td select:focus{outline:none;border-color:var(--acc)}
 </div>
 </div>
 
+<!-- MODAL ÉDITION TRANSACTION -->
+<div class="modal-bg" id="m-edit-txn">
+<div class="modal" style="width:680px;max-width:98vw">
+  <div class="mh"><h2>Modifier la transaction</h2><button class="mx" onclick="closeM('m-edit-txn')">✕</button></div>
+  <input type="hidden" id="edit-txn-id">
+  <div class="fr">
+    <div class="fg"><label class="fl">Date</label><input type="date" class="fc" id="edit-txn-date"></div>
+    <div class="fg" style="position:relative">
+      <label class="fl">Magasin / Description</label>
+      <input type="text" class="fc" id="edit-txn-store" autocomplete="off">
+    </div>
+  </div>
+  <div class="fg"><label class="fl">Compte bancaire</label><select class="fc" id="edit-txn-cb"></select></div>
+  <h3 style="margin-bottom:10px;font-size:14px">Articles</h3>
+  <div id="edit-txn-items"></div>
+  <button class="add" onclick="addEditItem()">+ Ajouter un article</button>
+  <div class="tax-row" style="margin-top:10px">
+    <span>Sous-total: <b id="edit-ts-sub" style="font-family:'DM Mono',monospace">0,00 $</b></span>
+    <span>Taxes: <b id="edit-ts-taxes" style="font-family:'DM Mono',monospace">0,00 $</b></span>
+    <span style="color:var(--txt);font-weight:600">Total: <b id="edit-ts-tot" style="font-family:'DM Mono',monospace">0,00 $</b></span>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:1rem;justify-content:flex-end">
+    <button class="btn bg2" onclick="closeM('m-edit-txn')">Annuler</button>
+    <button class="btn bp" onclick="saveEditTxn()">Enregistrer</button>
+  </div>
+</div>
+</div>
+
+<!-- MODAL DÉTAIL ARTICLES -->
+<div class="modal-bg" id="m-items-detail">
+<div class="modal" style="width:540px">
+  <div class="mh"><h2 id="items-detail-title">Articles</h2><button class="mx" onclick="closeM('m-items-detail')">✕</button></div>
+  <div id="items-detail-body"></div>
+</div>
+</div>
+
 <!-- MODAL CONFIRM GÉNÉRIQUE -->
 <div class="modal-bg" id="m-confirm">
 <div class="modal" style="width:420px">
@@ -1609,89 +1645,117 @@ function pgEpargnes(){
 // ─── TRANSACTIONS ─────────────────────────────────────────────
 function pgTxn(){
   const f=getFilter('txn');
-  const txAll=applyFilter(S.transactions,f);
-  const depenses=txAll.filter(t=>t.type!=='epargne').sort((a,b)=>b.date.localeCompare(a.date));
-  const epargnes=txAll.filter(t=>t.type==='epargne').sort((a,b)=>b.date.localeCompare(a.date));
+  const txAll=applyFilter(S.transactions,f).sort((a,b)=>b.date.localeCompare(a.date));
+  const depenses=txAll.filter(t=>t.type==='depense');
+  const epargnes=txAll.filter(t=>t.type==='epargne'||t.type==='retrait');
   const totDep=depenses.reduce((s,t)=>s+t.tot,0);
-  const totEp=epargnes.reduce((s,t)=>s+t.montant,0);
+  const totEp=epargnes.filter(t=>t.type==='epargne').reduce((s,t)=>s+Math.abs(t.montant),0);
   const byCat={};
   depenses.forEach(t=>(t.items||[]).forEach(i=>{byCat[i.cat]=(byCat[i.cat]||0)+i.tot;}));
 
+  function txnCard(t){
+    const isEp=t.type==='epargne'||t.type==='retrait';
+    const isRetrait=t.type==='retrait';
+    const c=isEp?S.comptes.find(x=>x.id===t.compteId):null;
+    const cb=S.comptesBancaires.find(x=>x.id===+t.compteBancaireId);
+    const items=t.items||[];
+    const MAX_ITEMS=3;
+    const shownItems=items.slice(0,MAX_ITEMS);
+    const extraCount=items.length-MAX_ITEMS;
+    const accentColor=isRetrait?'var(--dan)':isEp?'var(--pur)':'var(--txt)';
+    const bgColor=isRetrait?'var(--dl)':isEp?'var(--pl)':'var(--sur)';
+    const borderColor=isRetrait?'var(--dan)':isEp?'var(--pur)':'var(--bdr)';
+    const sign=isRetrait?'−':isEp?'+':'';
+    const amount=isEp?Math.abs(t.montant):t.tot;
+
+    return`<div style="background:${bgColor};border:1px solid ${borderColor};border-radius:var(--r);padding:10px 12px">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div style="min-width:0;flex:1;margin-right:8px">
+          <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            ${isEp?(c?.name||'Épargne'):t.store||'—'}
+          </div>
+          <div style="font-size:11px;color:var(--mut);margin-top:1px">
+            ${t.date}${cb?' · '+cb.institution:''}
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+          <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:14px;color:${accentColor}">${sign}${fmt(amount)}</span>
+          <button class="del" style="padding:2px 5px" onclick="openEditTxn(${t.id})" title="Modifier">✏️</button>
+          <button class="del" style="padding:2px 5px" onclick="delTxn(${t.id})" title="Supprimer">✕</button>
+        </div>
+      </div>
+      <!-- Articles (max 3) -->
+      ${!isEp&&items.length>0?`
+        <div style="border-top:1px solid var(--bdr);padding-top:5px">
+          ${shownItems.map(i=>{const ci=getCatInfo(i.cat);return`
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;padding:2px 0">
+              <span style="color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:65%">${ci.icon} ${i.name||'—'}</span>
+              <span style="font-family:'DM Mono',monospace;font-weight:500;flex-shrink:0">${fmt(i.tot)}</span>
+            </div>`}).join('')}
+          ${extraCount>0?`<button onclick="showItemsDetail(${t.id})"
+            style="background:none;border:none;color:var(--acc);font-size:11px;cursor:pointer;padding:2px 0;font-family:inherit">
+            +${extraCount} autre(s) → voir tout
+          </button>`:''}
+        </div>`:''}
+      <!-- Footer taxes (dépenses seulement) -->
+      ${!isEp&&t.sub>0?`
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--mut);margin-top:4px;padding-top:4px;border-top:1px solid var(--bdr)">
+          <span>S-total ${fmt(t.sub)}</span>
+          <span>TPS+TVQ ${fmt(t.tps+t.tvq)}</span>
+        </div>`:''}
+    </div>`;
+  }
+
   return`
   <div class="pt">Transactions</div>
-  <div class="ps">Dépenses détaillées + dépôts d'épargne</div>
-
-  ${filterBar({stateKey:'txn',showYear:true,showMonth:true,
-    extraHtml:`<div class="filter-sep"></div>
-    <button class="btn bg2 bs" onclick="exportCSV()">↓ CSV</button>`
-  })}
+  <!-- Bouton + filtres en haut -->
+  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:1rem">
+    <button class="btn bp" onclick="openTxn()">+ Nouvelle transaction</button>
+    ${filterBar({stateKey:'txn',showYear:true,showMonth:true,
+      extraHtml:`<div class="filter-sep"></div><button class="btn bg2 bs" onclick="exportCSV()">↓ CSV</button>`
+    })}
+  </div>
 
   <div style="display:grid;grid-template-columns:2fr 1fr;gap:1rem">
     <div>
+      ${txAll.length===0?`<div class="card" style="text-align:center;color:var(--mut);padding:2rem">Aucune transaction pour cette période.</div>`:''}
+
       ${epargnes.length>0?`
-      <div style="font-size:12px;font-weight:600;color:var(--pur);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">💜 Dépôts épargne</div>
-      ${epargnes.map(t=>{const c=S.comptes.find(x=>x.id===t.compteId);return`
-        <div class="card" style="padding:.875rem;background:var(--pl);border-color:var(--pur);margin-bottom:8px">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <div style="display:flex;align-items:center;gap:8px">
-              <div style="width:8px;height:8px;border-radius:50%;background:${c?.color||'#888'}"></div>
-              <div><div style="font-weight:500">${c?.name||'Compte inconnu'}</div>
-              <div style="font-size:12px;color:var(--mut)">${t.date} · ${t.store||'Dépôt'} · ${t.payment}</div></div>
-            </div>
-            <div style="display:flex;align-items:center;gap:9px">
-              <div style="font-family:'DM Mono',monospace;font-weight:700;font-size:15px;color:var(--pur)">+${fmt(t.montant)}</div>
-              <button class="del" onclick="delTxn(${t.id})">✕</button>
-            </div>
-          </div>
-        </div>`}).join('')}
-      <div style="font-size:12px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;margin-top:4px">🧾 Dépenses</div>`:''}
-      ${depenses.length===0&&epargnes.length===0?`<div class="card" style="text-align:center;color:var(--mut);padding:2rem">Aucune transaction pour cette période.</div>`:''}
-      ${depenses.map(t=>`<div class="card" style="padding:1rem;margin-bottom:8px">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9px">
-            <div><div style="font-weight:500">${t.store}</div><div style="font-size:12px;color:var(--mut)">${t.date} · ${t.payment}</div></div>
-            <div style="display:flex;align-items:center;gap:9px">
-              <div style="font-family:'DM Mono',monospace;font-weight:600;font-size:15px">${fmt(t.tot)}</div>
-              <button class="del" onclick="delTxn(${t.id})">✕</button>
-            </div>
-          </div>
-          <table style="font-size:12px">
-            <thead><tr><th>Article</th><th>Cat.</th><th>Prix</th><th>Taxes</th><th>TTC</th></tr></thead>
-            <tbody>${(t.items||[]).map(i=>{const ci=getCatInfo(i.cat);return`<tr>
-              <td>${i.name}</td>
-              <td><span style="display:inline-flex;align-items:center;gap:4px;background:var(--s2);padding:1px 7px;border-radius:20px;font-size:11px">${ci.icon} ${i.cat}</span></td>
-              <td style="font-family:'DM Mono',monospace">${fmt(i.price)}</td>
-              <td style="color:var(--mut)">${i.tax==='aucune'?'—':i.tax==='tps'?'TPS':'TPS+TVQ'}</td>
-              <td style="font-family:'DM Mono',monospace;font-weight:500">${fmt(i.tot)}</td>
-            </tr>`;}).join('')}</tbody>
-          </table>
-          <div class="tax-row" style="margin-top:7px">
-            <span>S.-total : <b style="font-family:'DM Mono',monospace">${fmt(t.sub)}</b></span>
-            <span>TPS : <b style="font-family:'DM Mono',monospace">${fmt(t.tps)}</b></span>
-            <span>TVQ : <b style="font-family:'DM Mono',monospace">${fmt(t.tvq)}</b></span>
-            <span style="font-weight:600;color:var(--txt)">Total : <b style="font-family:'DM Mono',monospace">${fmt(t.tot)}</b></span>
-          </div>
-        </div>`).join('')}
+        <div style="font-size:11px;font-weight:600;color:var(--pur);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">💜 Épargne / Retraits</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:1rem">
+          ${epargnes.map(t=>txnCard(t)).join('')}
+        </div>`:''}
+
+      ${depenses.length>0?`
+        <div style="font-size:11px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">🧾 Dépenses (${depenses.length})</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">
+          ${depenses.map(t=>txnCard(t)).join('')}
+        </div>`:''}
     </div>
+
+    <!-- Panneau résumé -->
     <div>
-      <div class="card">
+      <div class="card" style="position:sticky;top:1rem">
         <h2 style="margin-bottom:.9rem">Résumé</h2>
-        <div class="ml">Dépenses totales</div><div class="mv r" style="font-size:17px;margin-bottom:.5rem">${fmt(totDep)}</div>
-        ${totEp>0?`<div class="ml">Épargne déposée</div><div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:600;color:var(--pur);margin-bottom:.75rem">+${fmt(totEp)}</div>`:''}
+        <div class="ml">Dépenses</div>
+        <div class="mv r" style="font-size:16px;margin-bottom:.5rem">${fmt(totDep)}</div>
+        ${totEp>0?`<div class="ml">Épargne déposée</div>
+        <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:600;color:var(--pur);margin-bottom:.75rem">+${fmt(totEp)}</div>`:''}
         <div style="margin-top:.5rem">
-        ${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([c,a])=>{const ci=getCatInfo(c);return`
-          <div style="margin-bottom:8px">
-            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px">
-              <span style="color:var(--mut)">${ci.icon} ${c}</span><span style="font-family:'DM Mono',monospace">${fmt(a)}</span>
-            </div>
-            <div class="pw"><div class="pb" style="width:${totDep>0?Math.round(a/totDep*100):0}%;background:${ci.color}"></div></div>
-          </div>`;}).join('')}
-        ${Object.keys(byCat).length===0?'<p style="color:var(--mut);font-size:13px">Aucune dépense.</p>':''}
+          ${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([c,a])=>{
+            const ci=getCatInfo(c);
+            return`<div style="margin-bottom:7px">
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px">
+                <span style="color:var(--mut)">${ci.icon} ${c}</span>
+                <span style="font-family:'DM Mono',monospace">${fmt(a)}</span>
+              </div>
+              <div class="pw"><div class="pb" style="width:${totDep>0?Math.round(a/totDep*100):0}%;background:${ci.color}"></div></div>
+            </div>`;}).join('')}
+          ${Object.keys(byCat).length===0?'<p style="color:var(--mut);font-size:13px">Aucune dépense.</p>':''}
         </div>
       </div>
     </div>
-  </div>
-  <div style="margin-top:.5rem;text-align:center">
-    <button class="btn bp" onclick="openTxn()">+ Nouvelle transaction</button>
   </div>`;
 }
 
@@ -2360,7 +2424,132 @@ function openTxnForCompte(cid,type='epargne'){
   populateCompteSelect('t-compte',cid);
 }
 
-// ─── MODAL COMPTE BANCAIRE ────────────────────────────────────
+// ─── ÉDITION TRANSACTION ──────────────────────────────────────
+let editTxnItems=[];
+function showItemsDetail(txnId){
+  const t=S.transactions.find(x=>x.id===+txnId);if(!t)return;
+  document.getElementById('items-detail-title').textContent=`Articles — ${t.store||t.date}`;
+  document.getElementById('items-detail-body').innerHTML=`
+    <table style="width:100%;font-size:13px">
+      <thead><tr><th>Article</th><th>Catégorie</th><th>Prix</th><th>Taxes</th><th>TTC</th></tr></thead>
+      <tbody>${(t.items||[]).map(i=>{const ci=getCatInfo(i.cat);return`<tr>
+        <td>${i.name||'—'}</td>
+        <td><span class="badge bg-gr">${ci.icon} ${i.cat}</span></td>
+        <td style="font-family:'DM Mono',monospace">${fmt(i.price)}</td>
+        <td style="color:var(--mut)">${i.tax==='aucune'?'—':i.tax==='tps'?'TPS':'TPS+TVQ'}</td>
+        <td style="font-family:'DM Mono',monospace;font-weight:500">${fmt(i.tot)}</td>
+      </tr>`}).join('')}</tbody>
+    </table>
+    <div class="tax-row" style="margin-top:8px">
+      <span>Sous-total : <b style="font-family:'DM Mono',monospace">${fmt(t.sub)}</b></span>
+      <span>TPS : <b style="font-family:'DM Mono',monospace">${fmt(t.tps)}</b></span>
+      <span>TVQ : <b style="font-family:'DM Mono',monospace">${fmt(t.tvq)}</b></span>
+      <span style="font-weight:600">Total : <b style="font-family:'DM Mono',monospace">${fmt(t.tot)}</b></span>
+    </div>`;
+  document.getElementById('m-items-detail').classList.add('open');
+}
+function openEditTxn(txnId){
+  const t=S.transactions.find(x=>x.id===+txnId);if(!t||t.type!=='depense')return;
+  editTxnItems=JSON.parse(JSON.stringify(t.items||[]));
+  if(editTxnItems.length===0)editTxnItems=[{id:uid(),name:'',cat:S.settings.cats[0]?.name||'Autre',price:0,tax:'tpstvq',tot:0}];
+  document.getElementById('edit-txn-id').value=t.id;
+  document.getElementById('edit-txn-date').value=t.date;
+  document.getElementById('edit-txn-store').value=t.store||'';
+  populateCBSelect('edit-txn-cb',t.compteBancaireId);
+  renderEditItems();
+  document.getElementById('m-edit-txn').classList.add('open');
+}
+function renderEditItems(){
+  const cats=S.settings.cats;
+  document.getElementById('edit-txn-items').innerHTML=editTxnItems.map(i=>`
+    <div style="border:1px solid var(--bdr);border-radius:var(--r);padding:10px;margin-bottom:8px;background:var(--bg)">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div>
+          <div class="fl">Article</div>
+          <input type="text" value="${i.name||''}" placeholder="ex: Lait 2L"
+            onchange="editTxnItems.find(x=>x.id==${i.id}).name=this.value"
+            style="width:100%;border:1px solid var(--bdr);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:13px;background:var(--sur);color:var(--txt)">
+        </div>
+        <div>
+          <div class="fl">Catégorie</div>
+          <select onchange="editTxnItems.find(x=>x.id==${i.id}).cat=this.value"
+            style="width:100%;border:1px solid var(--bdr);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:13px;background:var(--sur);color:var(--txt)">
+            ${cats.map(c=>`<option value="${c.name}" ${i.cat===c.name?'selected':''}>${c.icon} ${c.name}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1">
+          <div class="fl">Prix ($)</div>
+          <input type="number" value="${i.price||''}" min="0" step="0.01" placeholder="0.00"
+            onchange="updEditItem(${i.id},'price',parseFloat(this.value)||0)"
+            style="width:100%;border:1px solid var(--bdr);border-radius:6px;padding:6px 8px;font-family:'DM Mono',monospace;font-size:14px;background:var(--sur);color:var(--txt)">
+        </div>
+        <div style="flex:1">
+          <div class="fl">Taxes</div>
+          <select onchange="updEditItem(${i.id},'tax',this.value)"
+            style="width:100%;border:1px solid var(--bdr);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:13px;background:var(--sur);color:var(--txt)">
+            <option value="aucune" ${i.tax==='aucune'?'selected':''}>Aucune</option>
+            <option value="tps" ${i.tax==='tps'?'selected':''}>TPS 5%</option>
+            <option value="tpstvq" ${i.tax==='tpstvq'?'selected':''}>TPS+TVQ</option>
+          </select>
+        </div>
+        <div style="text-align:right;min-width:70px">
+          <div class="fl">Total</div>
+          <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:600;padding:6px 0">${fmt(i.tot)}</div>
+        </div>
+        <div style="padding-top:18px">
+          <button class="del" onclick="rmEditItem(${i.id})" style="padding:6px 8px">✕</button>
+        </div>
+      </div>
+    </div>`).join('');
+  calcEditSum();
+}
+function updEditItem(id,f,v){
+  const i=editTxnItems.find(x=>x.id===id);if(!i)return;
+  i[f]=v;const t=calcTax(i.price,i.tax);i.tot=t.tot;
+  renderEditItems();
+}
+function addEditItem(){
+  editTxnItems.push({id:uid(),name:'',cat:S.settings.cats[0]?.name||'Autre',price:0,tax:'tpstvq',tot:0});
+  renderEditItems();
+}
+function rmEditItem(id){editTxnItems=editTxnItems.filter(x=>x.id!==id);renderEditItems();}
+function calcEditSum(){
+  const sub=editTxnItems.reduce((s,i)=>s+i.price,0);
+  const tps=editTxnItems.reduce((s,i)=>s+(i.tax!=='aucune'?i.price*(S.settings.tps||0.05):0),0);
+  const tvq=editTxnItems.reduce((s,i)=>s+(i.tax==='tpstvq'?i.price*(S.settings.tvq||0.09975):0),0);
+  document.getElementById('edit-ts-sub').textContent=fmt(sub);
+  document.getElementById('edit-ts-taxes').textContent=fmt(tps+tvq);
+  document.getElementById('edit-ts-tot').textContent=fmt(sub+tps+tvq);
+}
+async function saveEditTxn(){
+  const txnId=parseInt(document.getElementById('edit-txn-id').value);
+  const t=S.transactions.find(x=>x.id===txnId);if(!t)return;
+  const sub=editTxnItems.reduce((s,i)=>s+i.price,0);
+  const tps=editTxnItems.reduce((s,i)=>s+(i.tax!=='aucune'?i.price*(S.settings.tps||0.05):0),0);
+  const tvq=editTxnItems.reduce((s,i)=>s+(i.tax==='tpstvq'?i.price*(S.settings.tvq||0.09975):0),0);
+  const cbId=parseInt(document.getElementById('edit-txn-cb').value)||null;
+  // Mettre à jour en mémoire
+  t.date=document.getElementById('edit-txn-date').value;
+  t.store=document.getElementById('edit-txn-store').value.trim()||'Sans nom';
+  t.compteBancaireId=cbId;
+  t.items=editTxnItems.map(i=>{const tx=calcTax(i.price,i.tax);return{...i,tot:tx.tot};});
+  t.sub=sub;t.tps=tps;t.tvq=tvq;t.tot=sub+tps+tvq;
+  // Persister dans Supabase
+  queueSave(async()=>{
+    await sbPatch('transactions',`?id=eq.${txnId}&foyer_id=eq.${FOYER_ID}`,{
+      date:t.date,store:t.store,sub:t.sub,tps:t.tps,tvq:t.tvq,tot:t.tot,
+      compte_bancaire_id:cbId||null
+    });
+    // Supprimer et recréer les items
+    await sbDelete('transaction_items',`?transaction_id=eq.${txnId}`);
+    if(t.items.length>0){
+      await sbPost('transaction_items',t.items.map(i=>({transaction_id:txnId,name:i.name,cat:i.cat,price:i.price,tax:i.tax,tot:i.tot})));
+    }
+  });
+  save();closeM('m-edit-txn');render();
+}
 let editCBId=null;
 function openCBModal(id){
   editCBId=id||null;
