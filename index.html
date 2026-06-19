@@ -752,7 +752,7 @@ async function loadFromSupabase(foyerId){
   S.depFixes=depFixes.map(d=>({id:+d.id,name:d.name,amount:+d.amount,week:d.week,institution:d.institution||'',_persisted:true}));
   S.depVar=depVar.map(d=>({id:+d.id,name:d.name,amount:+d.amount,cat:d.cat,_persisted:true}));
   S.depPonct=depPonct.map(d=>({id:+d.id,name:d.name,amount:+d.amount,cat:d.cat,mois:d.mois||[],_persisted:true}));
-  S.paiesReelles=paiesReelles.map(p=>({id:+p.id,revId:+p.rev_id,date:p.date,montant:+p.montant,note:p.note||'',_persisted:true}));
+  S.paiesReelles=paiesReelles.map(p=>({id:+p.id,revId:+p.rev_id,date:p.date,montant:+p.montant,note:p.note||'',compteBancaireId:p.compte_bancaire_id?+p.compte_bancaire_id:null,_persisted:true}));
   S.comptes=comptes.map(c=>({id:+c.id,name:c.name,type:c.type,color:c.color,solde:+c.solde,objectif:+c.objectif,institution:c.institution||'',_persisted:true}));
 
   // Transactions avec leurs items
@@ -2729,16 +2729,8 @@ function delTxn(id){
       const c=S.comptes.find(x=>x.id===t.compteId);
       if(c){c.solde=Math.max(0,c.solde-t.montant);queueSave(async()=>await saveCompte(c));}
     }
-    // Reverser l'effet sur le compte bancaire
-    if(t.compteBancaireId){
-      const cb=S.comptesBancaires.find(x=>x.id===+t.compteBancaireId);
-      if(cb){
-        if(t.type==='depense')cb.solde_actuel+=t.tot;
-        else if(t.type==='epargne')cb.solde_actuel+=t.montant;
-        else if(t.type==='retrait')cb.solde_actuel-=Math.abs(t.montant);
-        queueSave(async()=>await saveCB(cb));
-      }
-    }
+    // Le solde du compte bancaire (getSoldeReel) se recalcule dynamiquement
+    // depuis les transactions restantes — pas besoin de toucher solde_actuel ici
     S.transactions=S.transactions.filter(x=>x.id!==+id);
     queueSave(async()=>await deleteRow('transactions',id));
     save();render();
