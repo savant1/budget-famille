@@ -1,3 +1,4 @@
+  
 <!DOCTYPE html>  
 <html lang="fr">  
 <head>  
@@ -1642,24 +1643,29 @@ function pgEpargnes(){
     const moisDep=[...new Set(depots.map(t=>t.date.slice(0,7)))];  
     const moy=moisDep.length>0?depots.reduce((s,t)=>s+t.montant,0)/moisDep.length:0;  
     return`<div class="compte-card">  
-      <div class="compte-header">  
-        <div style="display:flex;align-items:center;gap:10px">  
-          <div style="width:12px;height:12px;border-radius:50%;background:${c.color}"></div>  
-          <div><div style="font-weight:600;font-size:15px">${c.name}</div><div style="font-size:12px;color:var(--mut)">${c.type}${c.institution?` · <span style="color:var(--inf)">${c.institution}</span>`:''}</div></div>  
-        </div>  
-        <div style="display:flex;align-items:center;gap:8px">  
-          <div style="text-align:right">  
-            <div style="font-family:'DM Mono',monospace;font-size:17px;font-weight:600">${fmt(c.solde)}</div>  
-            ${c.objectif>0?`<div style="font-size:12px;color:var(--mut)">/ ${fmt(c.objectif)}</div>`:''}  
-          </div>  
-          <button class="btn bg2 bs" onclick="openCompte(${c.id})">Modifier</button>  
-          <button class="btn bg2 bs" onclick="openTxnForCompte(${c.id},'epargne')" title="Dépôt">+ Dépôt</button>  
-          <button class="btn bg2 bs" style="color:var(--dan);border-color:var(--dan)" onclick="openTxnForCompte(${c.id},'retrait')" title="Retrait">− Retrait</button>  
-          <button class="btn bg2 bs" style="color:var(--war);border-color:var(--war)" onclick="openAjustement(${c.id})" title="Ajustement marché">📈 Ajuster</button>
-          <button class="btn bg2 bs" onclick="openHistAjust(${c.id})" title="Historique des variations">📊</button>
-          <button class="del" onclick="delCompte(${c.id})">✕</button>  
-        </div>  
-      </div>  
+      <!-- En-tête : nom + solde -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
+          <div style="width:12px;height:12px;border-radius:50%;background:${c.color};flex-shrink:0"></div>
+          <div style="min-width:0">
+            <div style="font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>
+            <div style="font-size:12px;color:var(--mut)">${c.type}${c.institution?` · <span style="color:var(--inf)">${c.institution}</span>`:''}</div>
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:8px">
+          <div style="font-family:'DM Mono',monospace;font-size:17px;font-weight:600">${fmt(c.solde)}</div>
+          ${c.objectif>0?`<div style="font-size:12px;color:var(--mut)">/ ${fmt(c.objectif)}</div>`:''}
+        </div>
+      </div>
+      <!-- Boutons sur une ligne complète responsive -->
+      <div style="display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap">
+        <button class="btn bg2" style="flex:1;min-width:0;padding:5px 6px;font-size:12px;justify-content:center" onclick="openCompte(${c.id})">✏️ Modifier</button>
+        <button class="btn bg2" style="flex:1;min-width:0;padding:5px 6px;font-size:12px;justify-content:center" onclick="openTxnForCompte(${c.id},'epargne')">+ Dépôt</button>
+        <button class="btn bg2" style="flex:1;min-width:0;padding:5px 6px;font-size:12px;color:var(--dan);border-color:var(--dan);justify-content:center" onclick="openTxnForCompte(${c.id},'retrait')">− Retrait</button>
+        <button class="btn bg2" style="flex:1;min-width:0;padding:5px 6px;font-size:12px;color:var(--war);border-color:var(--war);justify-content:center" onclick="openAjustement(${c.id})">📈 Ajuster</button>
+        <button class="btn bg2" style="padding:5px 8px;font-size:13px" onclick="openHistAjust(${c.id})" title="Historique">📊</button>
+        <button class="del" style="padding:5px 8px" onclick="delCompte(${c.id})">✕</button>
+      </div>
       ${c.objectif>0?`<div style="margin-bottom:10px">  
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--mut);margin-bottom:4px">  
           <span>Progression</span><span style="font-weight:600;color:${pct>=100?'var(--acc)':c.color}">${pct}%${pct>=100?' ✅':''}</span>  
@@ -3028,4 +3034,4 @@ initApp();
 </script>  
 </div><!-- /app-wrapper -->  
 </body>  
-</html>
+</html>  
