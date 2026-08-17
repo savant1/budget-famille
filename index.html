@@ -549,6 +549,7 @@ td input:focus,td select:focus{outline:none;border-color:var(--acc)}
     <div class="fg"><label class="fl">Fin cible</label><input type="date" class="fc" id="p-end"></div>  
   </div>  
   <div class="fg"><label class="fl">Notes</label><textarea class="fc" id="p-notes" rows="2" style="resize:vertical"></textarea></div>  
+  <div class="fg"><label class="fl">Compte bancaire par défaut</label><select class="fc" id="p-cb-defaut"></select></div>
   <div style="display:flex;gap:8px;margin-top:1rem;justify-content:flex-end">  
     <button class="btn bg2" onclick="closeM('m-proj')">Annuler</button>  
     <button class="btn bp" onclick="saveProj()">Enregistrer</button>  
@@ -572,6 +573,7 @@ td input:focus,td select:focus{outline:none;border-color:var(--acc)}
   </div>  
   <div class="tax-row">Total TTC : <b id="dp-tot" style="font-family:'DM Mono',monospace">0,00 $</b></div>  
   <div class="fg" style="margin-top:10px"><label class="fl">Date</label><input type="date" class="fc" id="dp-date"></div>  
+  <div class="fg"><label class="fl">Compte bancaire débité</label><select class="fc" id="dp-cb"></select></div>
   <div style="display:flex;gap:8px;margin-top:1rem;justify-content:flex-end">  
     <button class="btn bg2" onclick="closeM('m-dp')">Annuler</button>  
     <button class="btn bp" onclick="saveDP()">Ajouter</button>  
@@ -815,11 +817,12 @@ async function loadFromSupabase(foyerId){
   const depsMap={};  
   projDeps.forEach(d=>{  
     if(!depsMap[d.projet_id])depsMap[d.projet_id]=[];  
-    depsMap[d.projet_id].push({id:d.id,desc:d.description,amt:+d.amt,tax:d.tax,tot:+d.tot,date:d.date});  
+    depsMap[d.projet_id].push({id:+d.id,desc:d.description,amt:+d.amt,tax:d.tax,tot:+d.tot,date:d.date,compteBancaireId:d.compte_bancaire_id?+d.compte_bancaire_id:null});  
   });  
   S.projets=projets.map(p=>({  
     id:+p.id,name:p.name,cat:p.cat,budget:+p.budget,status:p.status,  
     start:p.start_date,end:p.end_date,notes:p.notes||'',  
+    compteBancaireDefaut:p.compte_bancaire_id_defaut?+p.compte_bancaire_id_defaut:null,
     deps:depsMap[p.id]||[],_persisted:true  
   }));  
   
@@ -918,12 +921,12 @@ async function saveTxnToSupa(t){
   }  
 }  
 async function saveProjetToSupa(p){  
-  const body={foyer_id:FOYER_ID,name:p.name,cat:p.cat,budget:p.budget,status:p.status,start_date:p.start||null,end_date:p.end||null,notes:p.notes||''};  
+  const body={foyer_id:FOYER_ID,name:p.name,cat:p.cat,budget:p.budget,status:p.status,start_date:p.start||null,end_date:p.end||null,notes:p.notes||'',compte_bancaire_id_defaut:p.compteBancaireDefaut||null};  
   if(!p._persisted){const res=await sbPost('projets',body);p.id=res[0].id;p._persisted=true;}  
   else await sbPatch('projets',`?id=eq.${p.id}&foyer_id=eq.${FOYER_ID}`,body);  
 }  
 async function saveProjetDep(dep,projId){  
-  const body={foyer_id:FOYER_ID,projet_id:projId,description:dep.desc,amt:dep.amt,tax:dep.tax,tot:dep.tot,date:dep.date};  
+  const body={foyer_id:FOYER_ID,projet_id:projId,description:dep.desc,amt:dep.amt,tax:dep.tax,tot:dep.tot,date:dep.date,compte_bancaire_id:dep.compteBancaireId||null};  
   const res=await sbPost('projet_deps',body);dep.id=res[0].id;  
 }  
 async function saveCB(c){  
@@ -1514,8 +1517,10 @@ function getSoldeReel(cb){
   const sorties=virSrc.reduce((s,v)=>s+v.montant,0);  
   const entrees=virDst.reduce((s,v)=>s+v.montant,0);  
   // Paies reçues créditent le compte  
-  const paies=S.paiesReelles.filter(p=>+p.compteBancaireId===+cb.id).reduce((s,p)=>s+p.montant,0);  
-  return cb.solde_initial - depenses - depots + retraits - sorties + entrees + paies;  
+  const paies=S.paiesReelles.filter(p=>+p.compteBancaireId===+cb.id).reduce((s,p)=>s+p.montant,0);
+  // Dépenses de projets maison débitent le compte
+  const projDeps=S.projets.flatMap(p=>p.deps||[]).filter(d=>d.compteBancaireId&&+d.compteBancaireId===+cb.id).reduce((s,d)=>s+d.tot,0);
+  return cb.solde_initial - depenses - depots + retraits - sorties + entrees + paies - projDeps;  
 }  
 function pgComptes(){  
   const INST_COLORS={BNC:'#e63946',Desjardins:'#52b788',CIBC:'#c77dff',WealthSimple:'#4cc9f0',Autre:'#7f8c8d'};  
@@ -1869,7 +1874,7 @@ function pgMaison(){
             <span style="font-weight:500;font-size:15px">${p.name}</span>  
             <span class="badge ${sb}">${p.status}</span>  
           </div>  
-          <div style="font-size:12px;color:var(--mut)">${p.cat}${p.start?' · Début '+p.start:''}${p.end?' → '+p.end:''}</div>  
+          <div style="font-size:12px;color:var(--mut)">${p.cat}${p.start?' · Début '+p.start:''}${p.end?' → '+p.end:''}${(()=>{const cb=p.compteBancaireDefaut?S.comptesBancaires.find(x=>x.id===+p.compteBancaireDefaut):null;return cb?` · <span style="color:var(--inf)">💳 ${cb.institution} · ${cb.nom}</span>`:'';})()}</div>  
         </div>  
         <div style="display:flex;gap:6px">  
           <button class="btn bg2 bs" onclick="openProj(${p.id})">Modifier</button>  
@@ -1886,13 +1891,16 @@ function pgMaison(){
       </div>  
       ${p.notes?`<div style="font-size:12px;color:var(--mut);font-style:italic;margin-bottom:10px">${p.notes}</div>`:''}  
       ${p.deps.length>0?`<div style="font-size:11px;color:var(--mut);margin-bottom:6px">Dépenses filtrées : ${fmt(sp)}</div>  
-      <table style="font-size:12px"><thead><tr><th>Date</th><th>Description</th><th>Avant taxes</th><th>Taxes</th><th>Total TTC</th></tr></thead>  
-      <tbody>${p.deps.map(d=>`<tr>  
-        <td style="font-family:'DM Mono',monospace">${d.date}</td><td>${d.desc}</td>  
+      <table style="font-size:12px"><thead><tr><th>Date</th><th>Description</th><th>Compte</th><th>Avant taxes</th><th>Taxes</th><th>Total TTC</th></tr></thead>  
+      <tbody>${p.deps.map(d=>{
+        const cb=d.compteBancaireId?S.comptesBancaires.find(x=>x.id===+d.compteBancaireId):null;
+        return`<tr>  
+        <td style="font-family:'DM Mono',monospace">${d.date}</td><td>${d.desc}</td>
+        <td style="font-size:11px;color:var(--mut)">${cb?`${cb.institution} · ${cb.nom}`:'—'}</td>
         <td style="font-family:'DM Mono',monospace">${fmt(d.amt)}</td>  
         <td style="color:var(--mut)">${d.tax==='aucune'?'—':d.tax==='tps'?'TPS':'TPS+TVQ'}</td>  
         <td style="font-family:'DM Mono',monospace;font-weight:500">${fmt(d.tot)}</td>  
-      </tr>`).join('')}</tbody></table>`:''}  
+      </tr>`;}).join('')}</tbody></table>`:''}  
     </div>`;}).join('')}`;  
 }  
   
@@ -2959,11 +2967,16 @@ function openProj(id){
   document.getElementById('p-start').value=p?.start||'';  
   document.getElementById('p-end').value=p?.end||'';  
   document.getElementById('p-notes').value=p?.notes||'';  
+  // Peupler le select compte bancaire
+  const cbSel=document.getElementById('p-cb-defaut');
+  cbSel.innerHTML='<option value="">— Aucun compte par défaut —</option>'+
+    S.comptesBancaires.filter(c=>c.actif).map(c=>`<option value="${c.id}" ${+p?.compteBancaireDefaut===+c.id?'selected':''}>${c.institution} · ${c.nom} (${c.type})</option>`).join('');
   document.getElementById('m-proj').classList.add('open');  
 }  
 function saveProj(){  
   const name=document.getElementById('p-name').value.trim();if(!name)return;  
-  const obj={id:editPId||uid(),name,cat:document.getElementById('p-cat').value,budget:parseFloat(document.getElementById('p-budget').value)||0,status:document.getElementById('p-status').value,start:document.getElementById('p-start').value,end:document.getElementById('p-end').value,notes:document.getElementById('p-notes').value,deps:editPId?(S.projets.find(p=>p.id===editPId)?.deps||[]):[]};  
+  const cbDefaut=parseInt(document.getElementById('p-cb-defaut').value)||null;
+  const obj={id:editPId||uid(),name,cat:document.getElementById('p-cat').value,budget:parseFloat(document.getElementById('p-budget').value)||0,status:document.getElementById('p-status').value,start:document.getElementById('p-start').value,end:document.getElementById('p-end').value,notes:document.getElementById('p-notes').value,compteBancaireDefaut:cbDefaut,deps:editPId?(S.projets.find(p=>p.id===editPId)?.deps||[]):[]};  
   if(editPId){const i=S.projets.findIndex(p=>p.id===editPId);if(i>=0)S.projets[i]=obj;}  
   else S.projets.push(obj);  
   queueSave(async()=>await saveProjetToSupa(obj));  
@@ -2982,7 +2995,12 @@ function openDP(pid){
   document.getElementById('dp-amt').value='';  
   document.getElementById('dp-tax').value='tpstvq';  
   document.getElementById('dp-date').value=today();  
-  document.getElementById('dp-tot').textContent='0,00 $';  
+  document.getElementById('dp-tot').textContent='0,00 $';
+  // Peupler le select compte avec le compte par défaut du projet
+  const p=S.projets.find(x=>x.id===+pid);
+  const cbSel=document.getElementById('dp-cb');
+  cbSel.innerHTML='<option value="">— Aucun compte —</option>'+
+    S.comptesBancaires.filter(c=>c.actif).map(c=>`<option value="${c.id}" ${+p?.compteBancaireDefaut===+c.id?'selected':''}>${c.institution} · ${c.nom} (${c.type})</option>`).join('');
   document.getElementById('m-dp').classList.add('open');  
 }  
 function calcDP(){document.getElementById('dp-tot').textContent=fmt(calcTax(parseFloat(document.getElementById('dp-amt').value)||0,document.getElementById('dp-tax').value).tot);}  
@@ -2991,12 +3009,18 @@ function saveDP(){
   const desc=document.getElementById('dp-desc').value.trim()||'Dépense';  
   const amt=parseFloat(document.getElementById('dp-amt').value)||0;  
   const tax=document.getElementById('dp-tax').value;  
-  const date=document.getElementById('dp-date').value;  
+  const date=document.getElementById('dp-date').value;
+  const cbId=parseInt(document.getElementById('dp-cb').value)||null;
   const t=calcTax(amt,tax);  
   const p=S.projets.find(x=>x.id===pid);if(!p)return;  
   if(!p.deps)p.deps=[];  
-  const dep={id:uid(),desc,amt,tax,tot:t.tot,date};  
-  p.deps.push(dep);  
+  const dep={id:uid(),desc,amt,tax,tot:t.tot,date,compteBancaireId:cbId};  
+  p.deps.push(dep);
+  // Débiter le compte bancaire
+  if(cbId){
+    const cb=S.comptesBancaires.find(x=>x.id===cbId);
+    // getSoldeReel recalcule dynamiquement via projet_deps — pas besoin de maj manuelle
+  }
   queueSave(async()=>await saveProjetDep(dep,pid));  
   save();closeM('m-dp');render();  
 }  
@@ -3034,4 +3058,4 @@ initApp();
 </script>  
 </div><!-- /app-wrapper -->  
 </body>  
-</html>  
+</html>
