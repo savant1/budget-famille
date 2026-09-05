@@ -1118,7 +1118,7 @@ function filterBar(opts){
   // opts: {showYear, showMonth, showCat, showType, stateKey, extraHtml}  
   const k=opts.stateKey;  
   if(!window._filters)window._filters={};  
-  if(!window._filters[k])window._filters[k]={year:thisYear().toString(),month:'',cat:'',type:''};  
+  if(!window._filters[k])window._filters[k]={year:thisYear().toString(),month:new Date().toISOString().slice(5,7),cat:'',type:''};  
   const f=window._filters[k];  
   
   const years=[...new Set(S.transactions.map(t=>t.date.slice(0,4)))];  
@@ -1155,13 +1155,22 @@ function filterBar(opts){
   return html;  
 }  
 function setFilter(k,field,val){if(!window._filters)window._filters={};if(!window._filters[k])window._filters[k]={};window._filters[k][field]=val;}  
-function resetFilter(k){if(window._filters)window._filters[k]={year:thisYear().toString(),month:'',cat:'',type:''};}  
+function resetFilter(k){if(window._filters)window._filters[k]={year:thisYear().toString(),month:new Date().toISOString().slice(5,7),cat:'',type:''};render();}
+function getFilter(k){if(!window._filters||!window._filters[k])return{year:thisYear().toString(),month:new Date().toISOString().slice(5,7),cat:'',type:''};return window._filters[k];}  
 function getFilter(k){if(!window._filters||!window._filters[k])return{year:thisYear().toString(),month:'',cat:'',type:''};return window._filters[k];}  
 function applyFilter(txns,k){  
-  const f=getFilter(k);  
+  const f=typeof k==='string'?getFilter(k):k;
   return txns.filter(t=>{  
     if(f.year&&!t.date.startsWith(f.year))return false;  
-    if(f.month&&t.date.slice(5,7)!==f.month)return false;  
+    if(f.month&&t.date.slice(5,7)!==f.month)return false;
+    if(f.cat){
+      if(t.type==='depense'){
+        const hascat=(t.items||[]).some(i=>i.cat===f.cat);
+        if(!hascat)return false;
+      } else {
+        return false;
+      }
+    }
     return true;  
   });  
 }  
@@ -1712,10 +1721,15 @@ function pgTxn(){
   const txAll=applyFilter(S.transactions,'txn').sort((a,b)=>b.date.localeCompare(a.date));  
   const depenses=txAll.filter(t=>t.type==='depense');  
   const epargnes=txAll.filter(t=>t.type==='epargne'||t.type==='retrait');  
-  const totDep=depenses.reduce((s,t)=>s+t.tot,0);  
+  // byCat calculé sur TOUTES les dépenses du mois (sans filtre cat) pour le panneau résumé
+  const allDepMois=applyFilter(S.transactions.filter(t=>t.type==='depense'),{year:f.year,month:f.month,cat:'',type:''});
+  const byCat={};
+  allDepMois.forEach(t=>(t.items||[]).forEach(i=>{byCat[i.cat]=(byCat[i.cat]||0)+i.tot;}));
+  // totDep reflète le filtre actif (avec cat si applicable)
+  const totDep=f.cat
+    ? depenses.reduce((s,t)=>s+(t.items||[]).filter(i=>i.cat===f.cat).reduce((ss,i)=>ss+i.tot,0),0)
+    : depenses.reduce((s,t)=>s+t.tot,0);
   const totEp=epargnes.filter(t=>t.type==='epargne').reduce((s,t)=>s+Math.abs(t.montant),0);  
-  const byCat={};  
-  depenses.forEach(t=>(t.items||[]).forEach(i=>{byCat[i.cat]=(byCat[i.cat]||0)+i.tot;}));  
   
   function txnCard(t){  
     const isEp=t.type==='epargne'||t.type==='retrait';  
@@ -1805,16 +1819,28 @@ function pgTxn(){
         <div class="ml">Dépenses</div>  
         <div class="mv r" style="font-size:16px;margin-bottom:.5rem">${fmt(totDep)}</div>  
         ${totEp>0?`<div class="ml">Épargne déposée</div>  
-        <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:600;color:var(--pur);margin-bottom:.75rem">+${fmt(totEp)}</div>`:''}  
-        <div style="margin-top:.5rem">  
+        <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:600;color:var(--pur);margin-bottom:.75rem">+${fmt(totEp)}</div>`:''}
+        ${f.cat?`<div style="margin-bottom:8px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--al);border-radius:var(--r);font-size:12px">
+            <span style="color:var(--acc);font-weight:500">🔍 Filtre : ${f.cat}</span>
+            <button onclick="setFilter('txn','cat','');render()" style="background:none;border:none;cursor:pointer;color:var(--acc);font-size:13px;padding:0 2px">✕</button>
+          </div>
+        </div>`:''}
+        <div style="margin-top:.5rem">
+          <div style="font-size:11px;color:var(--mut);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Cliquer pour filtrer</div>
           ${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([c,a])=>{  
-            const ci=getCatInfo(c);  
-            return`<div style="margin-bottom:7px">  
-              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px">  
-                <span style="color:var(--mut)">${ci.icon} ${c}</span>  
-                <span style="font-family:'DM Mono',monospace">${fmt(a)}</span>  
-              </div>  
-              <div class="pw"><div class="pb" style="width:${totDep>0?Math.round(a/totDep*100):0}%;background:${ci.color}"></div></div>  
+            const ci=getCatInfo(c);
+            const isActive=f.cat===c;
+            return`<div onclick="setFilter('txn','cat','${c.replace(/'/g,"\\'")}');render()"
+              style="margin-bottom:7px;cursor:pointer;border-radius:var(--r);padding:4px 6px;transition:background .15s;${isActive?'background:var(--al);':''}"
+              onmouseover="this.style.background='var(--bg)'"
+              onmouseout="this.style.background='${isActive?'var(--al)':''}'"
+              title="Filtrer par ${c}">
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px">
+                <span style="color:${isActive?'var(--acc)':'var(--mut)'};font-weight:${isActive?'600':'400'}">${ci.icon} ${c} ${isActive?'✓':''}</span>
+                <span style="font-family:'DM Mono',monospace">${fmt(a)}</span>
+              </div>
+              <div class="pw"><div class="pb" style="width:${totDep>0?Math.round(a/totDep*100):0}%;background:${ci.color}"></div></div>
             </div>`;}).join('')}  
           ${Object.keys(byCat).length===0?'<p style="color:var(--mut);font-size:13px">Aucune dépense.</p>':''}  
         </div>  
@@ -3058,4 +3084,4 @@ initApp();
 </script>  
 </div><!-- /app-wrapper -->  
 </body>  
-</html>
+</html>  
