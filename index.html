@@ -1154,10 +1154,13 @@ function filterBar(opts){
   html+=`</div>`;  
   return html;  
 }  
-function setFilter(k,field,val){if(!window._filters)window._filters={};if(!window._filters[k])window._filters[k]={};window._filters[k][field]=val;}  
+function setFilter(k,field,val){
+  if(!window._filters)window._filters={};
+  if(!window._filters[k])window._filters[k]={year:thisYear().toString(),month:new Date().toISOString().slice(5,7),cat:'',type:''};
+  window._filters[k][field]=val;
+}
 function resetFilter(k){if(window._filters)window._filters[k]={year:thisYear().toString(),month:new Date().toISOString().slice(5,7),cat:'',type:''};render();}
 function getFilter(k){if(!window._filters||!window._filters[k])return{year:thisYear().toString(),month:new Date().toISOString().slice(5,7),cat:'',type:''};return window._filters[k];}  
-function getFilter(k){if(!window._filters||!window._filters[k])return{year:thisYear().toString(),month:'',cat:'',type:''};return window._filters[k];}  
 function applyFilter(txns,k){  
   const f=typeof k==='string'?getFilter(k):k;
   return txns.filter(t=>{  
@@ -3084,4 +3087,4 @@ initApp();
 </script>  
 </div><!-- /app-wrapper -->  
 </body>  
-</html>
+</html>  
