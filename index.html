@@ -203,6 +203,7 @@ td input:focus,td select:focus{outline:none;border-color:var(--acc)}
     <div class="ni" onclick="go('comptes')">🏦 Comptes bancaires</div>  
     <div class="ni" onclick="go('epargnes')">💜 Épargnes</div>  
     <div class="ni" onclick="go('transactions')">🧾 Transactions</div>  
+    <div class="ni" onclick="go('stats')">📈 Statistiques</div>
     <div class="ni-sep">Suivi</div>  
     <div class="ni" onclick="go('maison')">🏠 Dépenses maison</div>  
     <div class="ni" onclick="go('flux')">📅 Flux & renouvellements</div>  
@@ -1068,7 +1069,7 @@ async function initApp(){
   
 // ─── NAVIGATION ───────────────────────────────────────────────  
 let page='dash';  
-const PAGES=['dash','budget','comptes','epargnes','transactions','maison','flux','settings'];  
+const PAGES=['dash','budget','comptes','epargnes','transactions','stats','maison','flux','settings'];  
 function go(p){  
   page=p;  
   document.querySelectorAll('.ni').forEach(el=>{  
@@ -1108,6 +1109,7 @@ function render(){
   else if(page==='comptes')m.innerHTML=pgComptes();  
   else if(page==='epargnes')m.innerHTML=pgEpargnes();  
   else if(page==='transactions')m.innerHTML=pgTxn();  
+  else if(page==='stats')m.innerHTML=pgStats();
   else if(page==='maison')m.innerHTML=pgMaison();  
   else if(page==='flux')m.innerHTML=pgFlux();  
   else if(page==='settings')m.innerHTML=pgSettings();  
@@ -1933,6 +1935,277 @@ function pgMaison(){
     </div>`;}).join('')}`;  
 }  
   
+// ─── STATISTIQUES ─────────────────────────────────────────────
+function getStatsMonths(mode,year){
+  // Retourne un tableau de {key:'2026-09', label:'Sep 2026'} selon le mode
+  const monthNames=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+  if(mode==='year'){
+    return Array.from({length:12},(_,i)=>{
+      const mm=String(i+1).padStart(2,'0');
+      return{key:`${year}-${mm}`,label:monthNames[i]};
+    });
+  }
+  // glissant: 12 derniers mois jusqu'à aujourd'hui
+  const out=[];
+  const now=new Date();
+  for(let i=11;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    const mm=String(d.getMonth()+1).padStart(2,'0');
+    out.push({key:`${d.getFullYear()}-${mm}`,label:monthNames[d.getMonth()]+' '+String(d.getFullYear()).slice(2)});
+  }
+  return out;
+}
+function svgLineChart(id,series,opts={}){
+  // series: [{label,color,data:[{x,y}]}], opts:{width,height,yFmt}
+  const W=opts.width||760,H=opts.height||220,PAD_L=52,PAD_R=16,PAD_T=16,PAD_B=28;
+  const allVals=series.flatMap(s=>s.data.map(d=>d.y));
+  const maxV=Math.max(...allVals,1)*1.15;
+  const minV=Math.min(0,...allVals);
+  const n=series[0]?.data.length||1;
+  const xStep=(W-PAD_L-PAD_R)/Math.max(n-1,1);
+  const yScale=v=>H-PAD_B-((v-minV)/(maxV-minV||1))*(H-PAD_T-PAD_B);
+  const xScale=i=>PAD_L+i*xStep;
+  const gridLines=[0,0.25,0.5,0.75,1].map(p=>minV+(maxV-minV)*p);
+
+  let svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;font-family:'DM Mono',monospace" id="${id}">`;
+  // grille horizontale
+  gridLines.forEach(v=>{
+    const y=yScale(v);
+    svg+=`<line x1="${PAD_L}" y1="${y}" x2="${W-PAD_R}" y2="${y}" stroke="var(--bdr)" stroke-width="1"/>`;
+    svg+=`<text x="${PAD_L-8}" y="${y+3}" text-anchor="end" font-size="9" fill="var(--mut)">${fmtI(v)}</text>`;
+  });
+  // labels X (un sur deux si trop nombreux)
+  const skip=n>8?2:1;
+  series[0]?.data.forEach((d,i)=>{
+    if(i%skip!==0&&i!==n-1)return;
+    svg+=`<text x="${xScale(i)}" y="${H-8}" text-anchor="middle" font-size="9" fill="var(--mut)">${d.x}</text>`;
+  });
+  // lignes
+  series.forEach(s=>{
+    const pts=s.data.map((d,i)=>`${xScale(i)},${yScale(d.y)}`).join(' ');
+    svg+=`<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+    s.data.forEach((d,i)=>{
+      svg+=`<circle cx="${xScale(i)}" cy="${yScale(d.y)}" r="3" fill="${s.color}"><title>${s.label}: ${d.x} = ${fmt(d.y)}</title></circle>`;
+    });
+  });
+  svg+=`</svg>`;
+  return svg;
+}
+function svgBarChart(id,series,opts={}){
+  // series: [{label,color,data:[{x,y}]}] groupées par x
+  const W=opts.width||760,H=opts.height||220,PAD_L=52,PAD_R=16,PAD_T=16,PAD_B=28;
+  const n=series[0]?.data.length||1;
+  const allVals=series.flatMap(s=>s.data.map(d=>d.y));
+  const maxV=Math.max(...allVals,1)*1.15;
+  const groupW=(W-PAD_L-PAD_R)/n;
+  const barW=Math.min(18,(groupW*0.7)/series.length);
+  const yScale=v=>H-PAD_B-(v/maxV)*(H-PAD_T-PAD_B);
+
+  let svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto" id="${id}">`;
+  [0,0.25,0.5,0.75,1].forEach(p=>{
+    const v=maxV*p,y=yScale(v);
+    svg+=`<line x1="${PAD_L}" y1="${y}" x2="${W-PAD_R}" y2="${y}" stroke="var(--bdr)" stroke-width="1"/>`;
+    svg+=`<text x="${PAD_L-8}" y="${y+3}" text-anchor="end" font-size="9" fill="var(--mut)" font-family="'DM Mono',monospace">${fmtI(v)}</text>`;
+  });
+  series[0]?.data.forEach((d,i)=>{
+    const gx=PAD_L+i*groupW+groupW/2;
+    svg+=`<text x="${gx}" y="${H-8}" text-anchor="middle" font-size="9" fill="var(--mut)" font-family="'DM Mono',monospace">${d.x}</text>`;
+  });
+  series.forEach((s,si)=>{
+    s.data.forEach((d,i)=>{
+      const gx=PAD_L+i*groupW+groupW/2-(series.length*barW)/2+si*barW;
+      const y=yScale(Math.max(d.y,0));
+      const h=H-PAD_B-y;
+      svg+=`<rect x="${gx}" y="${y}" width="${barW-2}" height="${Math.max(h,0)}" fill="${s.color}" rx="2"><title>${s.label} ${d.x}: ${fmt(d.y)}</title></rect>`;
+    });
+  });
+  svg+=`</svg>`;
+  return svg;
+}
+function pgStats(){
+  const mode=window._statsMode||'glissant';
+  const year=window._statsYear||thisYear().toString();
+  const months=getStatsMonths(mode==='annee'?'year':'glissant',year);
+  const years=[...new Set(S.transactions.map(t=>t.date.slice(0,4)))];
+  if(!years.includes(thisYear().toString()))years.push(thisYear().toString());
+  years.sort().reverse();
+
+  // ── Graphique 1: Revenus vs Dépenses ──
+  const revPerMonth=months.map(m=>{
+    const paies=S.paiesReelles.filter(p=>p.date.startsWith(m.key)).reduce((s,p)=>s+p.montant,0);
+    return{x:m.label,y:paies>0?paies:totRevM()};
+  });
+  const depPerMonth=months.map(m=>{
+    const dep=S.transactions.filter(t=>t.type==='depense'&&t.date.startsWith(m.key)).reduce((s,t)=>s+t.tot,0);
+    return{x:m.label,y:dep};
+  });
+
+  // ── Graphique 2: Dépenses par catégorie (empilé simplifié en lignes top 5) ──
+  const catTotals={};
+  S.transactions.filter(t=>t.type==='depense').forEach(t=>(t.items||[]).forEach(i=>{catTotals[i.cat]=(catTotals[i.cat]||0)+i.tot;}));
+  const top5Cats=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0,5).map(c=>c[0]);
+  const catSeries=top5Cats.map((cat,idx)=>({
+    label:cat,color:BARCOLORS[idx%BARCOLORS.length],
+    data:months.map(m=>{
+      const val=S.transactions.filter(t=>t.type==='depense'&&t.date.startsWith(m.key))
+        .reduce((s,t)=>s+(t.items||[]).filter(i=>i.cat===cat).reduce((ss,i)=>ss+i.tot,0),0);
+      return{x:m.label,y:val};
+    })
+  }));
+
+  // ── Graphique 3: Croissance épargne ──
+  const epargneSeries=S.comptes.map((c,idx)=>{
+    const data=months.map(m=>{
+      // Solde en fin de mois: solde actuel - tous les mouvements après cette fin de mois
+      const finMois=`${m.key}-31`;
+      const mvtsApres=[
+        ...S.transactions.filter(t=>t.compteId===c.id&&t.date>finMois),
+        ...(S.ajustements||[]).filter(a=>a.compteId===c.id&&a.date>finMois)
+      ];
+      let solde=c.solde;
+      S.transactions.filter(t=>t.compteId===c.id&&t.date>finMois).forEach(t=>{solde-=t.montant;});
+      (S.ajustements||[]).filter(a=>a.compteId===c.id&&a.date>finMois).sort((a,b)=>b.date.localeCompare(a.date)).forEach(a=>{solde=a.valeurAvant;});
+      return{x:m.label,y:Math.max(solde,0)};
+    });
+    return{label:c.name,color:c.color||BARCOLORS[idx%BARCOLORS.length],data};
+  });
+
+  // ── Graphique 4: Comparaison année sur année (mois courant) ──
+  const currentMonthNum=String(new Date().getMonth()+1).padStart(2,'0');
+  const yoyYears=years.slice(0,3).reverse();
+  const yoyData=yoyYears.map(y=>{
+    const dep=S.transactions.filter(t=>t.type==='depense'&&t.date.startsWith(`${y}-${currentMonthNum}`)).reduce((s,t)=>s+t.tot,0);
+    return{x:y,y:dep};
+  });
+
+  // ── Graphique 5: Écart Revenus planifiés vs réels ──
+  const ecartData=months.map(m=>{
+    const reel=S.paiesReelles.filter(p=>p.date.startsWith(m.key)).reduce((s,p)=>s+p.montant,0);
+    const nbPaies=S.paiesReelles.filter(p=>p.date.startsWith(m.key)).length;
+    const planifie=nbPaies>0?totRevM():0;
+    return{x:m.label,planifie,reel,ecart:reel-planifie};
+  }).filter(d=>d.reel>0);
+
+  // ── Graphique 6: Répartition par institution ──
+  const instTotals={};
+  S.comptesBancaires.filter(c=>c.actif).forEach(c=>{
+    const solde=getSoldeReel(c);
+    if(c.type!=='Crédit')instTotals[c.institution]=(instTotals[c.institution]||0)+Math.max(solde,0);
+  });
+  const instColors={BNC:'#e63946',Desjardins:'#52b788',CIBC:'#c77dff',WealthSimple:'#4cc9f0',Autre:'#7f8c8d'};
+  const totInst=Object.values(instTotals).reduce((s,v)=>s+v,0);
+
+  return`
+  <div class="pt">Statistiques & tendances</div>
+  <div class="ps">Analyse comparative sur ${mode==='annee'?`l'année ${year}`:'les 12 derniers mois'}</div>
+
+  <div class="filter-bar" style="margin-bottom:1.25rem">
+    <label>Vue :</label>
+    <select onchange="window._statsMode=this.value;render()">
+      <option value="glissant" ${mode==='glissant'?'selected':''}>12 derniers mois (glissant)</option>
+      <option value="annee" ${mode==='annee'?'selected':''}>Année complète</option>
+    </select>
+    ${mode==='annee'?`<div class="filter-sep"></div><label>Année :</label>
+    <select onchange="window._statsYear=this.value;render()">
+      ${years.map(y=>`<option value="${y}" ${year===y?'selected':''}>${y}</option>`).join('')}
+    </select>`:''}
+  </div>
+
+  <!-- Graphique 1: Revenus vs Dépenses -->
+  <div class="card">
+    <div class="ch"><h2>💰 Revenus réels vs Dépenses</h2></div>
+    <div style="display:flex;gap:16px;margin-bottom:10px;font-size:12px">
+      <span style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:2px;background:var(--acc)"></div>Revenus</span>
+      <span style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:2px;background:var(--dan)"></div>Dépenses</span>
+    </div>
+    ${svgBarChart('chart1',[
+      {label:'Revenus',color:'var(--acc)',data:revPerMonth},
+      {label:'Dépenses',color:'var(--dan)',data:depPerMonth}
+    ].map(s=>({...s,color:s.label==='Revenus'?'#2d6a4f':'#c0392b'})))}
+  </div>
+
+  <!-- Graphique 2: Dépenses par catégorie -->
+  <div class="card">
+    <div class="ch"><h2>🏷️ Top 5 catégories de dépenses</h2></div>
+    <div style="display:flex;gap:14px;margin-bottom:10px;font-size:11px;flex-wrap:wrap">
+      ${catSeries.map(s=>`<span style="display:flex;align-items:center;gap:4px"><div style="width:9px;height:9px;border-radius:50%;background:${s.color}"></div>${s.label}</span>`).join('')}
+    </div>
+    ${catSeries.length>0?svgLineChart('chart2',catSeries):'<p style="color:var(--mut);font-size:13px">Pas assez de données.</p>'}
+  </div>
+
+  <!-- Graphique 3: Croissance épargne -->
+  <div class="card">
+    <div class="ch"><h2>📈 Croissance des comptes d'épargne</h2></div>
+    <div style="display:flex;gap:14px;margin-bottom:10px;font-size:11px;flex-wrap:wrap">
+      ${epargneSeries.map(s=>`<span style="display:flex;align-items:center;gap:4px"><div style="width:9px;height:9px;border-radius:50%;background:${s.color}"></div>${s.label}</span>`).join('')}
+    </div>
+    ${epargneSeries.length>0?svgLineChart('chart3',epargneSeries):'<p style="color:var(--mut);font-size:13px">Aucun compte épargne.</p>'}
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+    <!-- Graphique 4: Comparaison année sur année -->
+    <div class="card">
+      <div class="ch"><h2>📆 Comparaison YoY <span style="font-size:11px;color:var(--mut);font-weight:400">(mois de ${['','Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'][+currentMonthNum]})</span></h2></div>
+      ${yoyData.filter(d=>d.y>0).length>0?svgBarChart('chart4',[{label:'Dépenses',color:'#b7791f',data:yoyData}]):'<p style="color:var(--mut);font-size:13px">Pas assez d\u2019historique.</p>'}
+    </div>
+
+    <!-- Graphique 6: Répartition par institution -->
+    <div class="card">
+      <div class="ch"><h2>🏦 Liquidités par institution</h2></div>
+      ${totInst>0?`
+      <div style="display:flex;align-items:center;gap:1.5rem">
+        <svg viewBox="0 0 120 120" style="width:120px;height:120px;flex-shrink:0">
+          ${(()=>{
+            let angle=-90,svg='';
+            Object.entries(instTotals).forEach(([inst,val])=>{
+              const pct=val/totInst;
+              const sweep=pct*360;
+              const large=sweep>180?1:0;
+              const x1=60+50*Math.cos(angle*Math.PI/180),y1=60+50*Math.sin(angle*Math.PI/180);
+              angle+=sweep;
+              const x2=60+50*Math.cos(angle*Math.PI/180),y2=60+50*Math.sin(angle*Math.PI/180);
+              svg+=`<path d="M60,60 L${x1},${y1} A50,50 0 ${large} 1 ${x2},${y2} Z" fill="${instColors[inst]||'#888'}"/>`;
+            });
+            return svg;
+          })()}
+          <circle cx="60" cy="60" r="28" fill="var(--sur)"/>
+        </svg>
+        <div style="flex:1">
+          ${Object.entries(instTotals).sort((a,b)=>b[1]-a[1]).map(([inst,val])=>`
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:12px">
+              <span style="display:flex;align-items:center;gap:6px"><div style="width:9px;height:9px;border-radius:50%;background:${instColors[inst]||'#888'}"></div>${inst}</span>
+              <span style="font-family:'DM Mono',monospace;font-weight:600">${fmt(val)}</span>
+            </div>`).join('')}
+        </div>
+      </div>`:'<p style="color:var(--mut);font-size:13px">Aucune donnée de compte bancaire.</p>'}
+    </div>
+  </div>
+
+  <!-- Graphique 5: Écart revenus planifiés vs réels -->
+  <div class="card">
+    <div class="ch"><h2>🎯 Écart Revenus planifiés vs réels</h2></div>
+    ${ecartData.length===0?'<p style="color:var(--mut);font-size:13px">Aucune paie réelle saisie sur la période.</p>':`
+    <table style="font-size:13px">
+      <thead><tr><th>Mois</th><th>Planifié</th><th>Réel</th><th>Écart</th><th>Visuel</th></tr></thead>
+      <tbody>
+      ${ecartData.map(d=>{
+        const isPos=d.ecart>=0;
+        const maxEcart=Math.max(...ecartData.map(x=>Math.abs(x.ecart)),1);
+        const pct=Math.round(Math.abs(d.ecart)/maxEcart*100);
+        return`<tr>
+          <td>${d.x}</td>
+          <td style="font-family:'DM Mono',monospace">${fmt(d.planifie)}</td>
+          <td style="font-family:'DM Mono',monospace;font-weight:600">${fmt(d.reel)}</td>
+          <td style="font-family:'DM Mono',monospace;font-weight:700;color:${isPos?'var(--acc)':'var(--dan)'}">${isPos?'+':''}${fmt(d.ecart)}</td>
+          <td style="min-width:100px">
+            <div class="pw"><div class="pb" style="width:${pct}%;background:${isPos?'var(--acc)':'var(--dan)'}"></div></div>
+          </td>
+        </tr>`;}).join('')}
+      </tbody>
+    </table>`}
+  </div>`;
+}
+
 // ─── FLUX & RENOUVELLEMENTS ───────────────────────────────────  
 function pgFlux(){  
   const varW=totDepVarM()/4;const yr=new Date().getFullYear();  
@@ -3087,4 +3360,4 @@ initApp();
 </script>  
 </div><!-- /app-wrapper -->  
 </body>  
-</html> 
+</html>
